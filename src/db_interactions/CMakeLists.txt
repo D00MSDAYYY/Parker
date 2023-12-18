@@ -1,17 +1,13 @@
 ﻿cmake_minimum_required(VERSION 3.27.0)
-project(Parker)
+project(db_interactions)
 
-set(CMAKE_CXX_STANDARD 20)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-
-add_subdirectory(3rdParty)
-add_subdirectory(db_interactions)
-
-add_executable(${PROJECT_NAME} )
+add_library(${PROJECT_NAME} )
 
 target_sources(${PROJECT_NAME} 
+PUBLIC 
+	db_interactions.hpp
 PRIVATE
-	main.cpp
+	db_interactions.cpp
 )
 
 target_include_directories(${PROJECT_NAME}
