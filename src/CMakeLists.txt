@@ -22,4 +22,5 @@ PUBLIC
 target_link_libraries(${PROJECT_NAME}
 PUBLIC
 	TgBot
+	db_interactions
 )

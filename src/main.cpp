@@ -1,10 +1,11 @@
-﻿#include <csignal>
+﻿#include "db_interactions.hpp"
+
+#include <csignal>
 #include <cstdio>
 #include <cstdlib>
 #include <exception>
 #include <string>
 #include <tgbot/tgbot.h>
-
 using namespace std;
 using namespace TgBot;
 
@@ -153,6 +154,7 @@ main(int argc, char** argv)
 {
     Bot         bot{argv[1]};
     std::string admin_id{argv[2]};
+    Data_Base   db{"testing"};
 
     // clean up ###########################################################################
     // ####################################################################################
@@ -222,20 +224,22 @@ main(int argc, char** argv)
                                          keyboard(states.at(message->from->id)));
             }
         });
-    bot.getEvents().onCommand(admin_command->command,
-                              [&bot, &states, &admin_id](Message::Ptr message)
-                              {
-                                  if(std::to_string(message->from->id) == admin_id)
-                                  {
-                                      states[message->from->id] = FSM::ADMIN;
-                                      bot.getApi().sendMessage(
-                                          message->chat->id,
-                                          text(states.at(message->from->id)),
-                                          false,
-                                          0,
-                                          keyboard(states.at(message->from->id)));
-                                  }
-                              });
+    bot.getEvents().onCommand(
+        admin_command->command,
+        [&bot, &states, &admin_id, &db](Message::Ptr message)
+        {
+            if(std::to_string(message->from->id) == admin_id)
+            {
+                states[message->from->id] = FSM::ADMIN;
+                bot.getApi().sendMessage(message->chat->id,
+                                         text(states.at(message->from->id)),
+                                         false,
+                                         0,
+                                         keyboard(states.at(message->from->id)));
+                db.employees().add(
+                    {"123456", "Зубено", "Михаил", "Петрович", "Тойота Королла", "АМ777Р32"});
+            }
+        });
 
     // ####################################################################################
     // ####################################################################################
@@ -330,8 +334,7 @@ main(int argc, char** argv)
                         {
                             if(message->forwardFrom)
                             {
-                                states.insert(
-                                    {message->forwardFrom->id, FSM::USER_AUTORIZED});
+                                states.insert({message->forwardFrom->id, FSM::USER_AUTORIZED});
                                 // update database info
                                 bot.getApi().sendMessage(message->chat->id,
                                                          "пользователь добавлен",
@@ -349,7 +352,8 @@ main(int argc, char** argv)
                         break;
                     case FSM::ADMIN_RM_USER :
                         {
-                            if(message->forwardFrom && states.contains(message->forwardFrom->id))
+                            if(message->forwardFrom
+                               && states.contains(message->forwardFrom->id))
                             {
                                 states.erase(message->forwardFrom->id);
                                 //! update database info()
