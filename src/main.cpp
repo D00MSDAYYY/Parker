@@ -154,7 +154,7 @@ main(int argc, char** argv)
 {
     Bot         bot{argv[1]};
     std::string admin_id{argv[2]};
-    Data_Base   db{"testing"};
+    Data_Base   db{};
 
     // clean up ###########################################################################
     // ####################################################################################
@@ -236,7 +236,7 @@ main(int argc, char** argv)
                                          false,
                                          0,
                                          keyboard(states.at(message->from->id)));
-                db.employees().add(
+                db.employees()->add(
                     {"123456", "Зубено", "Михаил", "Петрович", "Тойота Королла", "АМ777Р32"});
             }
         });
@@ -244,7 +244,7 @@ main(int argc, char** argv)
     // ####################################################################################
     // ####################################################################################
     bot.getEvents().onCallbackQuery(
-        [&bot, &states](CallbackQuery::Ptr query)
+        [&bot, &states,&db](CallbackQuery::Ptr query)
         {
             if(states.contains(query->from->id))
             {
@@ -314,6 +314,20 @@ main(int argc, char** argv)
                                                          0,
                                                          keyboard(states.at(query->from->id)));
                             }
+                        }
+                        break;
+                    case FSM::ADMIN_RM_USER :
+                        {
+                            if(StringTools::startsWith(query->data, "rm_user"))
+                            {
+                                db.employees()->remove({"123456",
+                                                     "Зубено",
+                                                     "Михаил",
+                                                     "Петрович",
+                                                     "Тойота Королла",
+                                                     "АМ777Р32"});
+                            }
+                            
                         }
                         break;
                     default : break;
