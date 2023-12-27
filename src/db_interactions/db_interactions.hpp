@@ -1,12 +1,21 @@
 ﻿#include "libpq-fe.h"
 
-#include <array>
 #include <iostream>
 #include <memory>
-#include <optional>
 #include <string>
+#include <tgbot/tgbot.h>
+#include <unordered_map>
 #include <utility>
-#include <vector>
+
+struct Query_Args
+{
+    std::string tg_id{};
+    std::string firstname{};
+    std::string middlename{};
+    std::string lastname{};
+    std::string car_model{};
+    std::string license{};
+};
 
 class Table  // interface
 {
@@ -22,15 +31,15 @@ public:
     virtual ~Table() {}
 
     virtual bool
-    add(std::vector<std::string> args) const = 0;
+    add(Query_Args args) const = 0;
     virtual bool
-    remove(std::vector<std::string> args) const = 0;
+    remove(Query_Args args) const = 0;
     virtual bool
-    update(std::vector<std::string> args) const = 0;
+    update(Query_Args args) const = 0;
     virtual bool
-    exists(std::vector<std::string> args) const = 0;
+    exists(Query_Args args) const = 0;
     virtual int
-    count(std::vector<std::string> args) const = 0;
+    count(Query_Args args) const = 0;
 };
 
 class Employees_Table : public Table
@@ -39,55 +48,36 @@ public:
     Employees_Table(PGconn* connection);
 
     bool
-    add(std::vector<std::string> args) const override;
+    add(Query_Args args) const override;
     bool
-    remove(std::vector<std::string> args) const override;
+    remove(Query_Args args) const override;
     virtual bool
-    update(std::vector<std::string> args) const override;
+    update(Query_Args args) const override;
     bool
-    exists(std::vector<std::string> args) const override;
+    exists(Query_Args args) const override;
     int
-    count(std::vector<std::string> args) const override;
-};
-
-class LicensePl_Weekday_Table : public Table
-{
-public:
-    LicensePl_Weekday_Table(PGconn* connection)
-        : Table{connection}
-    {
-    }
-
-    bool
-    add(std::vector<std::string> args) const override;
-    bool
-    remove(std::vector<std::string> args) const override;
-    bool
-    exists(std::vector<std::string> args) const override;
-    int
-    count(std::vector<std::string> args) const override;
+    count(Query_Args args) const override;
 };
 
 class Data_Base
 {
 private:
-    PGconn*                          _connection{nullptr};
+    PGconn*         _connection{nullptr};
 
-    std::unique_ptr<Employees_Table> _employees{nullptr};
-    std::unique_ptr<Employees_Table> _licensepl_weekday{nullptr};
+    Employees_Table _employees{nullptr};
 
 public:
     Data_Base(std::string name = "");
 
-    auto&
+    Table&
     employees()
     {
         return _employees;
     };
 
-    auto&
-    licensepl_weekday()
-    {
-        return _licensepl_weekday;
-    };
+    // auto&
+    // licensepl_weekday()
+    // {
+    //     return _licensepl_weekday;
+    // };
 };

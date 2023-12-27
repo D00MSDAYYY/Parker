@@ -13,7 +13,8 @@ Data_Base::Data_Base(std::string name)
     _connection = PQconnectdb(name.c_str());
 
     if(PQstatus(_connection) != CONNECTION_OK) { std::cerr << PQerrorMessage(_connection); }
-    _employees.reset(new Employees_Table{_connection});
+
+    _employees = Employees_Table{_connection};
 }
 
 Employees_Table::Employees_Table(PGconn* connection)
@@ -21,12 +22,12 @@ Employees_Table::Employees_Table(PGconn* connection)
 {
     auto res{PQexec(_connection,
                     " CREATE TABLE IF NOT EXISTS employees ("
-                    " tg_id integer, "
+                    " tg_id bigint, "
                     " firstname text, "
                     " middlename text, "
                     " lastname text, "
                     " car_model text, "
-                    " license_plate text );")};
+                    " license text );")};
 
     if(PQresultStatus(res) != PGRES_COMMAND_OK)
     {
@@ -37,20 +38,18 @@ Employees_Table::Employees_Table(PGconn* connection)
 }
 
 bool
-Employees_Table::add(std::vector<std::string> args) const
+Employees_Table::add(Query_Args args) const
 {
-    const int param_num{6};
-
-    if(args.size() == param_num && !exists({args[0]}))
+    if(!exists({.tg_id = args.tg_id}))
     {
-        std::string query{"INSERT INTO employees VALUES ( "};
-        query += (args[0].empty()) ? " NULL " : args[0];
-        query += (args[1].empty()) ? " NULL " : ", ' " + args[1] + " ' ";
-        query += (args[2].empty()) ? " NULL " : ", ' " + args[2] + " ' ";
-        query += (args[3].empty()) ? " NULL " : ", ' " + args[3] + " ' ";
-        query += (args[4].empty()) ? " NULL " : ", ' " + args[4] + " ' ";
-        query += (args[5].empty()) ? " NULL " : ", ' " + args[5] + " ' ";
-        query += " ); ";
+        std::string query{};
+        query += (args.tg_id.empty()) ? " NULL " : args.tg_id;
+        query += (args.firstname.empty()) ? ", NULL " : ", '" + args.firstname + "' ";
+        query += (args.middlename.empty()) ? ", NULL " : ", '" + args.middlename + "' ";
+        query += (args.lastname.empty()) ? ", NULL " : ", '" + args.lastname + "' ";
+        query += (args.car_model.empty()) ? ", NULL " : ", '" + args.car_model + "' ";
+        query += (args.license.empty()) ? ", NULL " : ", '" + args.license + "' ";
+        query = "INSERT INTO employees VALUES ( " + query + " ); ";
 
         std::cerr << query << std::endl;
 
@@ -70,54 +69,41 @@ Employees_Table::add(std::vector<std::string> args) const
 }
 
 bool
-Employees_Table::remove(std::vector<std::string> args) const
+Employees_Table::remove(Query_Args args) const
 {
-    const int param_num{6};
-    std::cerr
-        << "**************************************************************************\n";
-    if(args.size() == param_num && exists({args[0]}))
+    if(exists({.tg_id = args.tg_id}))
     {
-        std::string      query{"DELETE FROM employees WHERE "};
+        std::string query{};
 
-        std::vector<int> indexes{};
-        int              i{0};
-        std::for_each(args.cbegin(),
-                      args.cend(),
-                      [&indexes, &i](const auto& elem)
-                      {
-                          if(!elem.empty()) indexes.push_back(i);
-                          ++i;
-                      });
+        if(!args.tg_id.empty()) query += "tg_id = " + args.tg_id;
 
-        if(std::find(indexes.cbegin(), indexes.cend(), 0) < indexes.cend())
-            query += std::string("tg_id = ") + " " + args[0].c_str() + " ";
-        if(std::find(indexes.cbegin(), indexes.cend(), 0) + 1 < indexes.cend())
-            query += " AND ";
+        if(!args.firstname.empty())
+        {
+            if(!query.empty()) query += " AND ";
+            query += "firstname = " + args.firstname;
+        }
 
-        if(std::find(indexes.cbegin(), indexes.cend(), 1) < indexes.cend())
-            query += std::string("firstname = ") + " '" + args[1].c_str() + "' ";
-        if(std::find(indexes.cbegin(), indexes.cend(), 1) + 1 < indexes.cend())
-            query += " AND ";
-
-        if(std::find(indexes.cbegin(), indexes.cend(), 2) < indexes.cend())
-            query += std::string("middlename = ") + " '" + args[2].c_str()+ "' ";
-        if(std::find(indexes.cbegin(), indexes.cend(), 2) + 1 < indexes.cend())
-            query += " AND ";
-
-        if(std::find(indexes.cbegin(), indexes.cend(), 3) < indexes.cend())
-            query += std::string("lastname = ") + " '" + args[3].c_str()+ "' ";
-        if(std::find(indexes.cbegin(), indexes.cend(), 3) + 1 < indexes.cend())
-            query += " AND ";
-
-        if(std::find(indexes.cbegin(), indexes.cend(), 4) < indexes.cend())
-            query += std::string("car_model = ") + " '" + args[4].c_str() + "' ";
-        if(std::find(indexes.cbegin(), indexes.cend(), 4) + 1 < indexes.cend())
-            query += " AND ";
-
-        if(std::find(indexes.cbegin(), indexes.cend(), 5) < indexes.cend())
-            query += std::string("license_plate = ") + " '" + args[5].c_str() + "' ";
-
-        query += " ); ";
+        if(!args.middlename.empty())
+        {
+            if(!query.empty()) query += " AND ";
+            query += "middlename = " + args.middlename;
+        }
+        if(!args.lastname.empty())
+        {
+            if(!query.empty()) query += " AND ";
+            query += "lastname = " + args.lastname;
+        }
+        if(!args.car_model.empty())
+        {
+            if(!query.empty()) query += " AND ";
+            query += "car_model = " + args.car_model;
+        }
+        if(!args.license.empty())
+        {
+            if(!query.empty()) query += " AND ";
+            query += "license = " + args.license;
+        }
+        query = "DELETE FROM employees WHERE " + query + ";";
 
         std::cerr << query << std::endl;
 
@@ -129,6 +115,8 @@ Employees_Table::remove(std::vector<std::string> args) const
             PQclear(res);
             return false;
         }
+        auto res_str{PQgetvalue(res, 0, 0)};
+        std::cerr << "!!!!!!!!!! -> " << res_str << std::endl;
         PQclear(res);
 
         return true;
@@ -137,21 +125,41 @@ Employees_Table::remove(std::vector<std::string> args) const
 }
 
 bool
-Employees_Table::update(std::vector<std::string> args) const
+Employees_Table::update(Query_Args args) const
 {
-    const int param_num{6};
-
-    if(args.size() == param_num && exists({args[0]}))
+    if(exists({.tg_id = args.tg_id}))
     {
-        std::string query{"UPDATE employees SET "};
+        std::string query{};
 
-        query += (args[0].empty()) ? " " : " " + args[0];
-        query += (args[1].empty()) ? " " : ", ' " + args[1] + " ' ";
-        query += (args[2].empty()) ? " " : ", ' " + args[2] + " ' ";
-        query += (args[3].empty()) ? " " : ", ' " + args[3] + " ' ";
-        query += (args[4].empty()) ? " " : ", ' " + args[4] + " ' ";
-        query += (args[5].empty()) ? " " : ", ' " + args[5] + " ' ";
-        query += " ); ";
+        if(!args.tg_id.empty()) query += "tg_id = '" + args.tg_id + "'";
+
+        if(!args.firstname.empty())
+        {
+            if(!query.empty()) query += " , ";
+            query += "firstname = '" + args.firstname + "'";
+        }
+
+        if(!args.middlename.empty())
+        {
+            if(!query.empty()) query += " , ";
+            query += "middlename = '" + args.middlename + "'";
+        }
+        if(!args.lastname.empty())
+        {
+            if(!query.empty()) query += " , ";
+            query += "lastname = '" + args.lastname + "'";
+        }
+        if(!args.car_model.empty())
+        {
+            if(!query.empty()) query += " , ";
+            query += "car_model = '" + args.car_model + "'";
+        }
+        if(!args.license.empty())
+        {
+            if(!query.empty()) query += " , ";
+            query += "license = '" + args.license + "'";
+        }
+        query = "UPDATE employees SET " + query + ";";
 
         std::cerr << query << std::endl;
 
@@ -171,200 +179,147 @@ Employees_Table::update(std::vector<std::string> args) const
 }
 
 bool
-Employees_Table::exists(std::vector<std::string> args) const
+Employees_Table::exists(Query_Args args) const
 {
-    const int param_num{6};
+    std::string query{};
 
-    if(args.size() <= param_num)
+    if(!args.tg_id.empty()) query += "tg_id = " + args.tg_id ;
+
+    if(!args.firstname.empty())
     {
-        std::string      query{"SELECT EXISTS(SELECT 1 FROM employees WHERE "};
-
-        std::vector<int> indexes{};
-        int              i{0};
-        std::for_each(args.cbegin(),
-                      args.cend(),
-                      [&indexes, &i](const auto& elem)
-                      {
-                          if(!elem.empty()) indexes.push_back(i);
-                          ++i;
-                      });
-
-        if(std::find(indexes.cbegin(), indexes.cend(), 0) < indexes.cend())
-            query += std::string(" tg_id = ") + args[0].c_str();
-        if(std::find(indexes.cbegin(), indexes.cend(), 0) + 1 < indexes.cend())
-            query += " AND ";
-
-        if(std::find(indexes.cbegin(), indexes.cend(), 1) < indexes.cend())
-            query += std::string(" firstname = ") + args[1].c_str();
-        if(std::find(indexes.cbegin(), indexes.cend(), 1) + 1 < indexes.cend())
-            query += " AND ";
-
-        if(std::find(indexes.cbegin(), indexes.cend(), 2) < indexes.cend())
-            query += std::string(" middlename = ") + args[2].c_str();
-        if(std::find(indexes.cbegin(), indexes.cend(), 2) + 1 < indexes.cend())
-            query += " AND ";
-
-        if(std::find(indexes.cbegin(), indexes.cend(), 3) < indexes.cend())
-            query += std::string(" lastname = ") + args[3].c_str();
-        if(std::find(indexes.cbegin(), indexes.cend(), 3) + 1 < indexes.cend())
-            query += " AND ";
-
-        if(std::find(indexes.cbegin(), indexes.cend(), 4) < indexes.cend())
-            query += std::string(" car_model = ") + args[4].c_str();
-        if(std::find(indexes.cbegin(), indexes.cend(), 4) + 1 < indexes.cend())
-            query += " AND ";
-
-        if(std::find(indexes.cbegin(), indexes.cend(), 5) < indexes.cend())
-            query += std::string(" license_plate = ") + args[5].c_str();
-        query += " ) AS exists ; ";
-
-        
-
-        auto res{PQexec(_connection, query.c_str())};
-
-        if(PQresultStatus(res) != PGRES_TUPLES_OK)
-        {
-            fprintf(stderr, "EXISTS in employees failed: %s", PQerrorMessage(_connection));
-            PQclear(res);
-            return false;
-        }
-        
-        auto exists_str{PQgetvalue(res, 0, 0)};
-        PQclear(res);
-
-        std::cerr << query << exists_str[0]  << std::endl;
-
-        return (exists_str[0] = 't') ? true : false;
+        if(!query.empty()) query += " , ";
+        query += "firstname = '" + args.firstname + "'";
     }
-    else { return false; }
+    if(!args.middlename.empty())
+    {
+        if(!query.empty()) query += " , ";
+        query += "middlename = '" + args.middlename + "'";
+    }
+    if(!args.lastname.empty())
+    {
+        if(!query.empty()) query += " , ";
+        query += "lastname = '" + args.lastname + "'";
+    }
+    if(!args.car_model.empty())
+    {
+        if(!query.empty()) query += " , ";
+        query += "car_model = '" + args.car_model + "'";
+    }
+    if(!args.license.empty())
+    {
+        if(!query.empty()) query += " , ";
+        query += "license = '" + args.license + "'";
+    }
+    query = "SELECT EXISTS(SELECT 1 FROM employees WHERE " + query + " ) AS exists ; ";
+
+    auto res{PQexec(_connection, query.c_str())};
+
+    if(PQresultStatus(res) != PGRES_TUPLES_OK)
+    {
+        fprintf(stderr, "EXISTS in employees failed: %s", PQerrorMessage(_connection));
+        PQclear(res);
+        return false;
+    }
+    auto res_str{PQgetvalue(res, 0, 0)};
+    PQclear(res);
+
+    return (res_str[0] == 't') ? true : false;
 }
 
 int
-Employees_Table::count(std::vector<std::string> args) const
+Employees_Table::count(Query_Args args) const
 {
-    const int param_num{6};
+    std::string query{};
 
-    if(args.size() <= param_num)
+    if(!args.tg_id.empty()) query += "tg_id = '" + args.tg_id + "'";
+
+    if(!args.firstname.empty())
     {
-        std::string      query{"SELECT COUNT(*) FROM employees WHERE "};
-
-        std::vector<int> indexes{};
-        int              i{0};
-        std::for_each(args.cbegin(),
-                      args.cend(),
-                      [&indexes, &i](const auto& elem)
-                      {
-                          ++i;
-                          if(elem.empty()) indexes.push_back(i);
-                      });
-
-        if(std::find(indexes.cbegin(), indexes.cend(), 0) < indexes.cend())
-            query += std::string(" tg_id = ") + args[0].c_str();
-        if(std::find(indexes.cbegin(), indexes.cend(), 0) + 1 < indexes.cend())
-            query += " AND ";
-
-        if(std::find(indexes.cbegin(), indexes.cend(), 1) < indexes.cend())
-            query += std::string(" firstname = ") + args[1].c_str();
-        if(std::find(indexes.cbegin(), indexes.cend(), 1) + 1 < indexes.cend())
-            query += " AND ";
-
-        if(std::find(indexes.cbegin(), indexes.cend(), 2) < indexes.cend())
-            query += std::string(" middlename = ") + args[2].c_str();
-        if(std::find(indexes.cbegin(), indexes.cend(), 2) + 1 < indexes.cend())
-            query += " AND ";
-
-        if(std::find(indexes.cbegin(), indexes.cend(), 3) < indexes.cend())
-            query += std::string(" lastname = ") + args[3].c_str();
-        if(std::find(indexes.cbegin(), indexes.cend(), 3) + 1 < indexes.cend())
-            query += " AND ";
-
-        if(std::find(indexes.cbegin(), indexes.cend(), 4) < indexes.cend())
-            query += std::string(" car_model = ") + args[4].c_str();
-        if(std::find(indexes.cbegin(), indexes.cend(), 4) + 1 < indexes.cend())
-            query += " AND ";
-
-        if(std::find(indexes.cbegin(), indexes.cend(), 5) < indexes.cend())
-            query += std::string(" license_plate = ") + args[5].c_str();
-        query += " ); ";
-
-        std::cerr << query << std::endl;
-
-        auto res{PQexec(_connection, query.c_str())};
-
-        if(PQresultStatus(res) != PGRES_COMMAND_OK)
-        {
-            fprintf(stderr, "COUNT in employees failed: %s", PQerrorMessage(_connection));
-            PQclear(res);
-            return 0;
-        }
-        auto count_str{PQgetvalue(res, 0, 0)};
-
-        PQclear(res);
-
-        return std::atoi(count_str);
+        if(!query.empty()) query += " , ";
+        query += "firstname = '" + args.firstname + "'";
     }
-    else { return 0; }
+    if(!args.middlename.empty())
+    {
+        if(!query.empty()) query += " , ";
+        query += "middlename = '" + args.middlename + "'";
+    }
+    if(!args.lastname.empty())
+    {
+        if(!query.empty()) query += " , ";
+        query += "lastname = '" + args.lastname + "'";
+    }
+    if(!args.car_model.empty())
+    {
+        if(!query.empty()) query += " , ";
+        query += "car_model = '" + args.car_model + "'";
+    }
+    if(!args.license.empty())
+    {
+        if(!query.empty()) query += " , ";
+        query += "license = '" + args.license + "'";
+    }
+
+    query = "SELECT COUNT(*) FROM employees WHERE " + query + " ); ";
+
+    std::cerr << query << std::endl;
+
+    auto res{PQexec(_connection, query.c_str())};
+
+    if(PQresultStatus(res) != PGRES_COMMAND_OK)
+    {
+        fprintf(stderr, "COUNT in employees failed: %s", PQerrorMessage(_connection));
+        PQclear(res);
+        return 0;
+    }
+    auto count_str{PQgetvalue(res, 0, 0)};
+
+    PQclear(res);
+
+    return std::atoi(count_str);
 }
 
 bool
-Table::update(std::vector<std::string> args) const
+Table::update(Query_Args args) const
 {
-    const int param_num{6};
+    std::string query{};
 
-    if(args.size() <= param_num)
+    if(!args.firstname.empty()) { query += "firstname = '" + args.firstname + "'"; }
+
+    if(!args.middlename.empty())
     {
-        std::string      query{"UPDATE employees SET "};
-
-        std::vector<int> indexes{};
-        int              i{0};
-        std::for_each(args.cbegin(),
-                      args.cend(),
-                      [&indexes, &i](const auto& elem)
-                      {
-                          ++i;
-                          if(elem.empty()) indexes.push_back(i);
-                      });
-
-        if(std::find(indexes.cbegin(), indexes.cend(), 0) < indexes.cend())
-            query += std::string(" tg_id = ") + args[0].c_str();
-        if(std::find(indexes.cbegin(), indexes.cend(), 0) + 1 < indexes.cend()) query += " , ";
-
-        if(std::find(indexes.cbegin(), indexes.cend(), 1) < indexes.cend())
-            query += std::string(" firstname = ") + args[1].c_str();
-        if(std::find(indexes.cbegin(), indexes.cend(), 1) + 1 < indexes.cend()) query += " , ";
-
-        if(std::find(indexes.cbegin(), indexes.cend(), 2) < indexes.cend())
-            query += std::string(" middlename = ") + args[2].c_str();
-        if(std::find(indexes.cbegin(), indexes.cend(), 2) + 1 < indexes.cend()) query += " , ";
-
-        if(std::find(indexes.cbegin(), indexes.cend(), 3) < indexes.cend())
-            query += std::string(" lastname = ") + args[3].c_str();
-        if(std::find(indexes.cbegin(), indexes.cend(), 3) + 1 < indexes.cend()) query += " , ";
-
-        if(std::find(indexes.cbegin(), indexes.cend(), 4) < indexes.cend())
-            query += std::string(" car_model = ") + args[4].c_str();
-        if(std::find(indexes.cbegin(), indexes.cend(), 4) + 1 < indexes.cend()) query += " , ";
-
-        if(std::find(indexes.cbegin(), indexes.cend(), 5) < indexes.cend())
-            query += std::string(" license_plate = ") + args[5].c_str();
-
-        query += " WHERE tg_id = " + args[0];
-        query += " ); ";
-
-        std::cerr << query << std::endl;
-        auto res{PQexec(_connection, query.c_str())};
-
-        if(PQresultStatus(res) != PGRES_COMMAND_OK)
-        {
-            fprintf(stderr, "COUNT in employees failed: %s", PQerrorMessage(_connection));
-            PQclear(res);
-            return 0;
-        }
-        auto count_str{PQgetvalue(res, 0, 0)};
-
-        PQclear(res);
-
-        return std::atoi(count_str);
+        if(!query.empty()) query += " , ";
+        query += "middlename = '" + args.middlename + "'";
     }
-    else { return 0; }
+    if(!args.lastname.empty())
+    {
+        if(!query.empty()) query += " , ";
+        query += "lastname = '" + args.lastname + "'";
+    }
+    if(!args.car_model.empty())
+    {
+        if(!query.empty()) query += " , ";
+        query += "car_model = '" + args.car_model + "'";
+    }
+    if(!args.license.empty())
+    {
+        if(!query.empty()) query += " , ";
+        query += "license = '" + args.license + "'";
+    }
+
+    query = "UPDATE employees SET " + query + " WHERE tg_id = " + args.tg_id + " ); ";
+
+    std::cerr << query << std::endl;
+    auto res{PQexec(_connection, query.c_str())};
+
+    if(PQresultStatus(res) != PGRES_COMMAND_OK)
+    {
+        fprintf(stderr, "UPDATE in employees failed: %s", PQerrorMessage(_connection));
+        PQclear(res);
+        return 0;
+    }
+    auto count_str{PQgetvalue(res, 0, 0)};
+
+    PQclear(res);
+
+    return std::atoi(count_str);
 }
