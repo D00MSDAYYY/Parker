@@ -35,15 +35,15 @@ keyboard(FSM state)
         case FSM::USER_AUTORIZED :
             {
                 InlineKeyboardButton::Ptr info_help(new InlineKeyboardButton);
-                info_help->text         = "Информация и помощь";
+                info_help->text         = "ℹ️ Информация и помощь";
                 info_help->callbackData = "info_help";
 
                 InlineKeyboardButton::Ptr chng_bio(new InlineKeyboardButton);
-                chng_bio->text         = "Изменить личную информацию";
+                chng_bio->text = "👤 Изменить данные пользователя";
                 chng_bio->callbackData = "chng_bio";
 
                 InlineKeyboardButton::Ptr rqst_prkng(new InlineKeyboardButton);
-                rqst_prkng->text         = "Заявка на парковку";
+                rqst_prkng->text         = "🅿️ Заявка на парковку";
                 rqst_prkng->callbackData = "rqst_prkng";
 
                 keyboard->inlineKeyboard.push_back({info_help});
@@ -54,11 +54,11 @@ keyboard(FSM state)
         case FSM::USER_RQST_PRKNG :
             {
                 InlineKeyboardButton::Ptr cncl_rqst(new InlineKeyboardButton);
-                cncl_rqst->text         = "Отменить заявку";
+                cncl_rqst->text         = "↩️ Отменить заявку";
                 cncl_rqst->callbackData = "cncl_rqst";
 
                 InlineKeyboardButton::Ptr submit_rqst(new InlineKeyboardButton);
-                submit_rqst->text         = "Подать заявку";
+                submit_rqst->text         = "⬆️ Подать заявку";
                 submit_rqst->callbackData = "submit_rqst";
 
                 keyboard->inlineKeyboard.push_back({cncl_rqst});
@@ -95,6 +95,10 @@ keyboard(FSM state)
             break;
         default : break;
     }
+    InlineKeyboardButton::Ptr rtrn_btn(new InlineKeyboardButton);
+    rtrn_btn->text         = "↩️ Назад";
+    rtrn_btn->callbackData = "rtrn_btn";
+    keyboard->inlineKeyboard.push_back({rtrn_btn});
     return keyboard;
 }
 
@@ -105,19 +109,21 @@ text(FSM state = FSM::USER_NOT_AUTORIZED)
     switch(state)
     {
         case FSM::USER_NOT_AUTORIZED :
-            text.assign("Вы не найдены в базе данных, попросите администратора "
-                        "создать вам аккаунт");
+            text.assign("🔴 Вас нет в базе данных, свяжитесь с администратором");
             break;
-        case FSM::USER_AUTORIZED : text.assign("Авторизация прошла успешно"); break;
+        case FSM::USER_AUTORIZED : text.assign("🟢 Авторизация прошла успешно"); break;
         case FSM::USER_INFO_HELP :
-            text.assign("Это бот-помощник для организации очередности парковки!");
+            text.assign("🅿️arker - бот-помощник для организации очередности парковки!");
             break;
         case FSM::USER_CHNG_BIO :
-            text.assign("Фамилия : (Пример)\n"
-                        "Имя : (Примерович)\n"
-                        "Отчество : (Примеров)\n"
-                        "Марка машины : (Тойота Пример 200)\n"
-                        "Номерной знак : (а000аа000)\n");
+            text.assign("Нажатием на поля ввода скопируйте текст сообщения, впишите "
+                        "новые данные и отправьте боту:\n\n"
+                        "❗ Используйте только кириллицу и цифры\n\n"
+                        "`➡️ Фамилия : Примеров\n"
+                        "➡️ Имя : Пример\n"
+                        "➡️ Отчество : Примерович\n"
+                        "➡️ Марка машины : Тойота Пример 200\n"
+                        "➡️ Номерной знак : а000аа000\n`");
             break;
         case FSM::USER_RQST_PRKNG :
             text.assign("Выберите, что вы хотите сделать на данный момент:");
@@ -145,11 +151,11 @@ text(FSM state = FSM::USER_NOT_AUTORIZED)
 Query_Args
 parseBioStr(std::string& str)
 {
-    auto firstname_index{str.find("Фамилия : (")};
-    auto middlename_index{str.find("Имя : (")};
-    auto lastname_index{str.find("Отчество : (")};
-    auto car_model_index{str.find("Марка машины : (")};
-    auto license_index{str.find("Номерной знак : (")};
+    auto firstname_index{str.find("Фамилия :")};
+    auto middlename_index{str.find("Имя :")};
+    auto lastname_index{str.find("Отчество :")};
+    auto car_model_index{str.find("Марка машины :")};
+    auto license_index{str.find("Номерной знак :")};
 
     if(firstname_index != std::string::npos && middlename_index != std::string::npos
        && lastname_index != std::string::npos && car_model_index != std::string::npos
@@ -162,46 +168,40 @@ parseBioStr(std::string& str)
         std::smatch car_model_res{};
         std::smatch license_res{};
 
-        std::regex  name_regex{"[А-ЯЁа-яё]{1,30}", std::regex::collate};
-        std::regex  car_model_regex{"[А-ЯЁа-яё0-9 ]{1,30}", std::regex::collate};
-        std::regex  license_regex{"([А-ЯЁа-яё]{1}[0-9]{3}(?!000)[А-Я]{2}[0-9]{2})"};
+        std::regex  name_regex{"[А-ЯЁа-яё]{1,30}"};
+        std::regex  car_model_regex{"[А-ЯЁа-яё0-9 ]{1,30}"};
+        std::regex license_regex{"([АВЕКМНОРСТУХавекмнорстух]{1}[0-9]{3}(?!000)["
+                                 "АВЕКМНОРСТУХавекмнорстух]{2}[0-9]{2,3})"};
         //! dont use flags -- not working
 
-        bool        firstname_flag{
-            std::regex_search({str.begin() + firstname_index + strlen("Фамилия : (")},
-                                     {str.begin() + middlename_index},
-                              firstname_res,
-                              name_regex)};
-        bool middlename_flag{
-            std::regex_search({str.begin() + middlename_index + strlen("Имя : (")},
-                              {str.begin() + lastname_index},
-                              middlename_res,
-                              name_regex)};
-        bool lastname_flag{
-            std::regex_search({str.begin() + lastname_index + strlen("Отчество : (")},
-                              {str.begin() + car_model_index},
-                              lastname_res,
-                              name_regex)};
-        bool car_model_flag{
-            std::regex_search({str.begin() + car_model_index + strlen("Марка машины : (")},
-                              {str.begin() + license_index},
-                              car_model_res,
-                              car_model_regex)};
-        bool license_flag{
-            std::regex_search({str.begin() + license_index + strlen("Номерной знак : (")},
-                              {str.end()},
-                              license_res,
-                              license_regex)};
+        std::regex_search({str.begin() + firstname_index + strlen("Фамилия :")},
+                          {str.begin() + middlename_index},
+                          firstname_res,
+                          name_regex);
+        std::regex_search({str.begin() + middlename_index + strlen("Имя :")},
+                          {str.begin() + lastname_index},
+                          middlename_res,
+                          name_regex);
+        std::regex_search({str.begin() + lastname_index + strlen("Отчество :")},
+                          {str.begin() + car_model_index},
+                          lastname_res,
+                          name_regex);
+        std::regex_search({str.begin() + car_model_index + strlen("Марка машины :")},
+                          {str.begin() + license_index},
+                          car_model_res,
+                          car_model_regex);
+        std::regex_search({str.begin() + license_index + strlen("Номерной знак :")},
+                          {str.end()},
+                          license_res,
+                          license_regex);
         std::locale::global(std::locale(prev_locale));
 
-        if(firstname_flag && middlename_flag && lastname_flag && car_model_flag
-           && license_flag)
-            return {{},
-                    firstname_res.str(),
-                    middlename_res.str(),
-                    lastname_res.str(),
-                    car_model_res.str(),
-                    license_res.str()};
+        return {{},
+                firstname_res.str(),
+                middlename_res.str(),
+                lastname_res.str(),
+                car_model_res.str(),
+                license_res.str()};
     }
     return {};
 }
@@ -331,33 +331,35 @@ main(int argc, char** argv)
                         if(StringTools::startsWith(query->data, "info_help"))
                         {
                             states.at(query->from->id) = FSM::USER_INFO_HELP;
-                            bot.getApi().sendMessage(query->message->chat->id,
-                                                     text(states.at(query->from->id)),
-                                                     false,
-                                                     0,
-                                                     keyboard(states.at(query->from->id)));
+                            bot.getApi().editMessageText(text(states.at(query->from->id)),
+                                                         query->message->chat->id,
+                                                         query->message->messageId,
+                                                         "",
+                                                         "",
+                                                         false,
+                                                         keyboard(states.at(query->from->id)));
                         }
                         if(StringTools::startsWith(query->data, "rqst_prkng"))
                         {
                             states.at(query->from->id) = FSM::USER_RQST_PRKNG;
-                            bot.getApi().sendMessage(query->message->chat->id,
-                                                     text(states.at(query->from->id)),
-                                                     false,
-                                                     0,
-                                                     keyboard(states.at(query->from->id)));
+                            bot.getApi().editMessageText(text(states.at(query->from->id)),
+                                                         query->message->chat->id,
+                                                         query->message->messageId,
+                                                         "",
+                                                         "",
+                                                         false,
+                                                         keyboard(states.at(query->from->id)));
                         }
                         if(StringTools::startsWith(query->data, "chng_bio"))
                         {
                             states.at(query->from->id) = FSM::USER_CHNG_BIO;
-                            bot.getApi().sendMessage(
-                                query->message->chat->id,
-                                "Скопируйте следующее сообщение, впишите "
-                                "новые данные между скобок и отправьте боту: ");
-                            bot.getApi().sendMessage(query->message->chat->id,
-                                                     text(states.at(query->from->id)),
-                                                     false,
-                                                     0,
-                                                     keyboard(states.at(query->from->id)));
+                            bot.getApi().editMessageText(text(states.at(query->from->id)),
+                                                         query->message->chat->id,
+                                                         query->message->messageId,
+                                                         "",
+                                                         "Markdown",
+                                                         false,
+                                                         keyboard(states.at(query->from->id)));
                         }
                     }
                     break;
@@ -366,20 +368,24 @@ main(int argc, char** argv)
                         if(StringTools::startsWith(query->data, "cncl_rqst"))
                         {
                             states.at(query->from->id) = FSM::USER_CNCL_RQST;
-                            bot.getApi().sendMessage(query->message->chat->id,
-                                                     text(states.at(query->from->id)),
-                                                     false,
-                                                     0,
-                                                     keyboard(states.at(query->from->id)));
+                            bot.getApi().editMessageText(text(states.at(query->from->id)),
+                                                         query->message->chat->id,
+                                                         query->message->messageId,
+                                                         "",
+                                                         "",
+                                                         false,
+                                                         keyboard(states.at(query->from->id)));
                         }
                         if(StringTools::startsWith(query->data, "submit_rqst"))
                         {
                             states.at(query->from->id) = FSM::USER_SBMT_RQST;
-                            bot.getApi().sendMessage(query->message->chat->id,
-                                                     text(states.at(query->from->id)),
-                                                     false,
-                                                     0,
-                                                     keyboard(states.at(query->from->id)));
+                            bot.getApi().editMessageText(text(states.at(query->from->id)),
+                                                         query->message->chat->id,
+                                                         query->message->messageId,
+                                                         "",
+                                                         "",
+                                                         false,
+                                                         keyboard(states.at(query->from->id)));
                         }
                     }
                     break;
@@ -388,31 +394,25 @@ main(int argc, char** argv)
                         if(StringTools::startsWith(query->data, "add_user"))
                         {
                             states.at(query->from->id) = FSM::ADMIN_ADD_USER;
-                            bot.getApi().sendMessage(query->message->chat->id,
-                                                     text(states.at(query->from->id)),
-                                                     false,
-                                                     0,
-                                                     keyboard(states.at(query->from->id)));
+                            bot.getApi().editMessageText(text(states.at(query->from->id)),
+                                                         query->message->chat->id,
+                                                         query->message->messageId,
+                                                         "",
+                                                         "",
+                                                         false,
+                                                         keyboard(states.at(query->from->id)));
                         }
                         if(StringTools::startsWith(query->data, "rm_user"))
                         {
                             states.at(query->from->id) = FSM::ADMIN_RM_USER;
-                            bot.getApi().sendMessage(query->message->chat->id,
-                                                     text(states.at(query->from->id)),
-                                                     false,
-                                                     0,
-                                                     keyboard(states.at(query->from->id)));
+                            bot.getApi().editMessageText(text(states.at(query->from->id)),
+                                                         query->message->chat->id,
+                                                         query->message->messageId,
+                                                         "",
+                                                         "",
+                                                         false,
+                                                         keyboard(states.at(query->from->id)));
                         }
-                    }
-                    break;
-                case FSM::ADMIN_RM_USER :
-                    {
-                        // db.employees().remove({"123456",
-                        //                        "Зубенко",
-                        //                        "Михаил",
-                        //                        "Петрович",
-                        //                        "Тойота Королла",
-                        //                        "АМ777Р32"});
                     }
                     break;
                 default : break;
@@ -428,21 +428,22 @@ main(int argc, char** argv)
             {
                 case FSM::ADMIN_ADD_USER :
                     {
-                        if(message->forwardFrom)
-                        {
-                            db.employees().add(
-                                {.tg_id = std::to_string(message->forwardFrom->id)});
+                        if(message->forwardFrom
+                           && db.employees().add(
+                               {.tg_id = std::to_string(message->forwardFrom->id)}))
                             bot.getApi().sendMessage(message->chat->id,
-                                                     "пользователь добавлен",
+                                                     "🟢 Пользователь добавлен",
                                                      false,
-                                                     0);
-                        }
+                                                     0,
+                                                     keyboard(states.at(message->from->id)));
+
                         else
                         {
                             bot.getApi().sendMessage(message->chat->id,
-                                                     "не получилось добавить пользователя",
+                                                     "🔴 Пользователь не добавлен",
                                                      false,
-                                                     0);
+                                                     0,
+                                                     keyboard(states.at(message->from->id)));
                         }
                     }
                     break;
@@ -453,30 +454,57 @@ main(int argc, char** argv)
                                {.tg_id = std::to_string(message->forwardFrom->id)}))
                         {
                             bot.getApi().sendMessage(message->chat->id,
-                                                     "пользователь удален",
+                                                     "🟢 Пользователь удален",
                                                      false,
-                                                     0);
+                                                     0,
+                                                     keyboard(states.at(message->from->id)));
                         }
                         else
                         {
                             bot.getApi().sendMessage(message->chat->id,
-                                                     "не получилось удалить пользователя",
+                                                     "🔴 Пользователь не удален",
                                                      false,
-                                                     0);
+                                                     0,
+                                                     keyboard(states.at(message->from->id)));
                         }
                     }
                     break;
                 case FSM::USER_CHNG_BIO :
                     {
-                        auto response{parseBioStr(message->text)};
-                        if(!response.firstname.empty())
+                        auto        new_bio{parseBioStr(message->text)};
+
+                        std::string fail_message{};
+                        if(new_bio.firstname.empty())
+                            fail_message += "❌ Не удалось распознать фамилию\n";
+                        if(new_bio.middlename.empty())
+                            fail_message += "❌ Не удалось распознать имя\n";
+                        if(new_bio.lastname.empty())
+                            fail_message += "❌ Не удалось распознать отчество\n";
+                        if(new_bio.car_model.empty())
+                            fail_message += "❌ Не удалось распознать модель автомобиля\n";
+                        if(new_bio.license.empty())
+                            fail_message += "❌ Не удалось распознать номерной знак\n";
+
+                        if(fail_message.empty())
                         {
-                            response.tg_id = std::to_string(message->from->id);
-                            if(db.employees().add(response))
-                                bot.getApi().sendMessage(message->chat->id,
-                                                         "информация о пользователе обновлена",
-                                                         false,
-                                                         0);
+                            new_bio.tg_id = std::to_string(message->from->id);
+
+                            if(db.employees().update(new_bio))
+                                bot.getApi().sendMessage(
+                                    message->chat->id,
+                                    "🟢 Данные о пользователе обновлены",
+                                    false,
+                                    0,
+                                    keyboard(states.at(message->from->id)));
+                        }
+                        else
+                        {
+                            bot.getApi().sendMessage(
+                                message->chat->id,
+                                fail_message + "🔴 Данные о пользователе не обновлены",
+                                false,
+                                0,
+                                keyboard(states.at(message->from->id)));
                         }
                     }
                     break;

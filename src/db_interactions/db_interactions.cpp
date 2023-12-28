@@ -7,7 +7,7 @@
 Data_Base::Data_Base(std::string name)
 {
     if(name.empty())
-        name = "dbname=Parker";
+        name = "dbname=parker";
     else
         name = "dbname=" + name;
     _connection = PQconnectdb(name.c_str());
@@ -20,6 +20,8 @@ Data_Base::Data_Base(std::string name)
 Employees_Table::Employees_Table(PGconn* connection)
     : Table{connection}
 {
+    // before this execute in terminal command : "CREATE DATABASE Parker WITH ENCODING 'UTF8'
+    // LC_COLLATE='ru_RU.UTF-8' LC_CTYPE='ru_RU.UTF-8' TEMPLATE=template0;"
     auto res{PQexec(_connection,
                     " CREATE TABLE IF NOT EXISTS employees ("
                     " tg_id bigint, "
@@ -159,7 +161,7 @@ Employees_Table::update(Query_Args args) const
             if(!query.empty()) query += " , ";
             query += "license = '" + args.license + "'";
         }
-        query = "UPDATE employees SET " + query + ";";
+        query = "UPDATE employees SET " + query + " WHERE tg_id = " + args.tg_id + "; ";
 
         std::cerr << query << std::endl;
 
@@ -167,7 +169,7 @@ Employees_Table::update(Query_Args args) const
 
         if(PQresultStatus(res) != PGRES_COMMAND_OK)
         {
-            fprintf(stderr, "INSERT in employees failed: %s", PQerrorMessage(_connection));
+            fprintf(stderr, "UPDATE in employees failed: %s", PQerrorMessage(_connection));
             PQclear(res);
             return false;
         }
@@ -211,7 +213,7 @@ Employees_Table::exists(Query_Args args) const
         query += "license = '" + args.license + "'";
     }
     query = "SELECT EXISTS(SELECT 1 FROM employees WHERE " + query + " ) AS exists ; ";
-
+    std::cerr << query;
     auto res{PQexec(_connection, query.c_str())};
 
     if(PQresultStatus(res) != PGRES_TUPLES_OK)
@@ -278,48 +280,3 @@ Employees_Table::count(Query_Args args) const
     return std::atoi(count_str);
 }
 
-bool
-Table::update(Query_Args args) const
-{
-    std::string query{};
-
-    if(!args.firstname.empty()) { query += "firstname = '" + args.firstname + "'"; }
-
-    if(!args.middlename.empty())
-    {
-        if(!query.empty()) query += " , ";
-        query += "middlename = '" + args.middlename + "'";
-    }
-    if(!args.lastname.empty())
-    {
-        if(!query.empty()) query += " , ";
-        query += "lastname = '" + args.lastname + "'";
-    }
-    if(!args.car_model.empty())
-    {
-        if(!query.empty()) query += " , ";
-        query += "car_model = '" + args.car_model + "'";
-    }
-    if(!args.license.empty())
-    {
-        if(!query.empty()) query += " , ";
-        query += "license = '" + args.license + "'";
-    }
-
-    query = "UPDATE employees SET " + query + " WHERE tg_id = " + args.tg_id + " ); ";
-
-    std::cerr << query << std::endl;
-    auto res{PQexec(_connection, query.c_str())};
-
-    if(PQresultStatus(res) != PGRES_COMMAND_OK)
-    {
-        fprintf(stderr, "UPDATE in employees failed: %s", PQerrorMessage(_connection));
-        PQclear(res);
-        return 0;
-    }
-    auto count_str{PQgetvalue(res, 0, 0)};
-
-    PQclear(res);
-
-    return std::atoi(count_str);
-}
