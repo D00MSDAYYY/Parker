@@ -13,6 +13,7 @@ add_library(${PROJECT_NAME} )
 target_sources(${PROJECT_NAME} 
 PUBLIC 
 	db_interactions.hpp
+	FSM_states.hpp
 PRIVATE
 	db_interactions.cpp
 )
