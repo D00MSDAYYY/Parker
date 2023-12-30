@@ -13,12 +13,13 @@ Data_Base::Data_Base(std::string name)
     _connection = PQconnectdb(name.c_str());
 
     if(PQstatus(_connection) != CONNECTION_OK) { std::cerr << PQerrorMessage(_connection); }
-
-    _employees = Employees_Table{_connection};
+    _states    = States{this};
+    _employees = Employees_Table{_connection, &_states};
 }
 
-Employees_Table::Employees_Table(PGconn* connection)
-    : Table{connection}
+Employees_Table::Employees_Table(PGconn* connection, States* states)
+    : Table{connection},
+      _states{states}
 {
     // before this execute in terminal command : "CREATE DATABASE Parker WITH ENCODING 'UTF8'
     // LC_COLLATE='ru_RU.UTF-8' LC_CTYPE='ru_RU.UTF-8' TEMPLATE=template0;"
@@ -51,18 +52,22 @@ Employees_Table::add(Query_Args args) const
         query += (args.lastname.empty()) ? ", NULL " : ", '" + args.lastname + "' ";
         query += (args.car_model.empty()) ? ", NULL " : ", '" + args.car_model + "' ";
         query += (args.license.empty()) ? ", NULL " : ", '" + args.license + "' ";
-        query = "INSERT INTO employees VALUES ( " + query + " ); ";
+        query  = "INSERT INTO employees VALUES ( " + query + " ) RETURNING tg_id; ";
 
         std::cerr << query << std::endl;
 
         auto res{PQexec(_connection, query.c_str())};
 
-        if(PQresultStatus(res) != PGRES_COMMAND_OK)
+        if(PQresultStatus(res) != PGRES_TUPLES_OK)
         {
             fprintf(stderr, "INSERT in employees failed: %s", PQerrorMessage(_connection));
             PQclear(res);
             return false;
         }
+
+        for(int i{0}; i < PQntuples(res); ++i)
+            _states->add(std::stoi(PQgetvalue(res, i, PQfnumber(res, "tg_id"))));
+
         PQclear(res);
 
         return true;
@@ -105,20 +110,21 @@ Employees_Table::remove(Query_Args args) const
             if(!query.empty()) query += " AND ";
             query += "license = " + args.license;
         }
-        query = "DELETE FROM employees WHERE " + query + ";";
+        query = "DELETE FROM employees WHERE " + query + " RETURNING tg_id;";
 
         std::cerr << query << std::endl;
 
         auto res{PQexec(_connection, query.c_str())};
 
-        if(PQresultStatus(res) != PGRES_COMMAND_OK)
+        if(PQresultStatus(res) != PGRES_TUPLES_OK)
         {
             fprintf(stderr, "DELETE in employees failed: %s", PQerrorMessage(_connection));
             PQclear(res);
             return false;
         }
-        auto res_str{PQgetvalue(res, 0, 0)};
-        std::cerr << "!!!!!!!!!! -> " << res_str << std::endl;
+
+        for(int i{0}; i < PQntuples(res); ++i)
+            _states->remove(std::stoi(PQgetvalue(res, i, PQfnumber(res, "tg_id"))));
         PQclear(res);
 
         return true;
@@ -185,7 +191,7 @@ Employees_Table::exists(Query_Args args) const
 {
     std::string query{};
 
-    if(!args.tg_id.empty()) query += "tg_id = " + args.tg_id ;
+    if(!args.tg_id.empty()) query += "tg_id = " + args.tg_id;
 
     if(!args.firstname.empty())
     {
@@ -277,6 +283,44 @@ Employees_Table::count(Query_Args args) const
 
     PQclear(res);
 
-    return std::atoi(count_str);
+    return std::stoi(count_str);
 }
 
+// std::optional<std::vector<Query_Args>>
+// Employees_Table::select_where(Query_Args args) const
+// {
+//     if(exists(args))
+//     return std::optional<std::vector<Query_Args>>();
+// }
+
+FSM&
+States::at(decltype(TgBot::User::id) id)
+{
+    if(_states.contains(id))
+        return _states.at(id);
+    else
+    {
+        if(_db->employees().exists({.tg_id = std::to_string(id)}))
+        {
+            _states.insert({id, FSM::USER_AUTHORIZED});
+            return _states.at(id);
+        }
+        else
+        {
+            _def_state = FSM::USER_NOT_AUTHORIZED;
+            return _def_state;
+        }
+    }
+}
+
+void
+States::remove(decltype(TgBot::User::id) id)
+{
+    _states.erase(id);
+}
+
+void
+States::add(decltype(TgBot::User::id) id)
+{
+    _states.erase(id);
+}

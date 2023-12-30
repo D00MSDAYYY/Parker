@@ -1,474 +1,450 @@
-﻿#include "db_interactions.hpp"
+﻿#include "FSM_states.hpp"
+#include "db_interactions.hpp"
 
 #include <csignal>
 #include <cstdio>
 #include <cstdlib>
 #include <exception>
 #include <locale>
+#include <optional>
 #include <regex>
 #include <string>
 #include <tgbot/tgbot.h>
 
-using namespace TgBot;
-
-enum class FSM               // FSM states
-{
-    USER_NOT_AUTORIZED = 0,  // starting
-    USER_AUTORIZED,          // USER_AUTORIZED
-    USER_INFO_HELP,          // information and help
-    USER_CHNG_BIO,           // change info about user
-    USER_RQST_PRKNG,         // requesting for parking
-    USER_CNCL_RQST,          // cancelling request for parking
-    USER_SBMT_RQST,          // submiting request for parking
-
-    ADMIN,                   // only for admins to show special commands
-    ADMIN_ADD_USER,          // admin adds user
-    ADMIN_RM_USER            // admin removes user
-};
-
-GenericReply::Ptr
-keyboard(FSM state)
-{
-    InlineKeyboardMarkup::Ptr keyboard(new InlineKeyboardMarkup);
-    switch(state)
-    {
-        case FSM::USER_AUTORIZED :
-            {
-                InlineKeyboardButton::Ptr info_help(new InlineKeyboardButton);
-                info_help->text         = "ℹ️ Информация и помощь";
-                info_help->callbackData = "info_help";
-
-                InlineKeyboardButton::Ptr chng_bio(new InlineKeyboardButton);
-                chng_bio->text = "👤 Изменить данные пользователя";
-                chng_bio->callbackData = "chng_bio";
-
-                InlineKeyboardButton::Ptr rqst_prkng(new InlineKeyboardButton);
-                rqst_prkng->text         = "🅿️ Заявка на парковку";
-                rqst_prkng->callbackData = "rqst_prkng";
-
-                keyboard->inlineKeyboard.push_back({info_help});
-                keyboard->inlineKeyboard.push_back({chng_bio});
-                keyboard->inlineKeyboard.push_back({rqst_prkng});
-            }
-            break;
-        case FSM::USER_RQST_PRKNG :
-            {
-                InlineKeyboardButton::Ptr cncl_rqst(new InlineKeyboardButton);
-                cncl_rqst->text         = "↩️ Отменить заявку";
-                cncl_rqst->callbackData = "cncl_rqst";
-
-                InlineKeyboardButton::Ptr submit_rqst(new InlineKeyboardButton);
-                submit_rqst->text         = "⬆️ Подать заявку";
-                submit_rqst->callbackData = "submit_rqst";
-
-                keyboard->inlineKeyboard.push_back({cncl_rqst});
-                keyboard->inlineKeyboard.push_back({submit_rqst});
-            }
-            break;
-        case FSM::USER_CNCL_RQST :
-            {
-                InlineKeyboardButton::Ptr yes(new InlineKeyboardButton);
-                yes->text         = "Да";
-                yes->callbackData = "cncl_rqst";
-
-                InlineKeyboardButton::Ptr no(new InlineKeyboardButton);
-                no->text         = "Нет";
-                no->callbackData = "submit_rqst";
-
-                keyboard->inlineKeyboard.push_back({yes});
-                keyboard->inlineKeyboard.push_back({no});
-            }
-            break;
-        case FSM::ADMIN :
-            {
-                InlineKeyboardButton::Ptr add(new InlineKeyboardButton);
-                add->text         = "Добавить пользователя";
-                add->callbackData = "add_user";
-
-                InlineKeyboardButton::Ptr rm(new InlineKeyboardButton);
-                rm->text         = "Удалить пользователя";
-                rm->callbackData = "rm_user";
-
-                keyboard->inlineKeyboard.push_back({add});
-                keyboard->inlineKeyboard.push_back({rm});
-            }
-            break;
-        default : break;
-    }
-    InlineKeyboardButton::Ptr rtrn_btn(new InlineKeyboardButton);
-    rtrn_btn->text         = "↩️ Назад";
-    rtrn_btn->callbackData = "rtrn_btn";
-    keyboard->inlineKeyboard.push_back({rtrn_btn});
-    return keyboard;
-}
-
-std::string
-text(FSM state = FSM::USER_NOT_AUTORIZED)
-{
-    std::string text;
-    switch(state)
-    {
-        case FSM::USER_NOT_AUTORIZED :
-            text.assign("🔴 Вас нет в базе данных, свяжитесь с администратором");
-            break;
-        case FSM::USER_AUTORIZED : text.assign("🟢 Авторизация прошла успешно"); break;
-        case FSM::USER_INFO_HELP :
-            text.assign("🅿️arker - бот-помощник для организации очередности парковки!");
-            break;
-        case FSM::USER_CHNG_BIO :
-            text.assign("Нажатием на поля ввода скопируйте текст сообщения, впишите "
-                        "новые данные и отправьте боту:\n\n"
-                        "❗ Используйте только кириллицу и цифры\n\n"
-                        "`➡️ Фамилия : Примеров\n"
-                        "➡️ Имя : Пример\n"
-                        "➡️ Отчество : Примерович\n"
-                        "➡️ Марка машины : Тойота Пример 200\n"
-                        "➡️ Номерной знак : а000аа000\n`");
-            break;
-        case FSM::USER_RQST_PRKNG :
-            text.assign("Выберите, что вы хотите сделать на данный момент:");
-            break;
-        case FSM::USER_CNCL_RQST :
-            text.assign("Ваше место Е3, время - с 14:30 до 16:00. Вы действительно "
-                        "хотите отменить бронь?");
-            break;
-        case FSM::USER_SBMT_RQST :
-            text.assign("На данный момент свободно 3 места, время - с 12:40 до "
-                        "16:35. Выберите время:");
-            break;
-        case FSM::ADMIN : text.assign("Настройка бота: "); break;
-        case FSM::ADMIN_ADD_USER :
-            text.assign("Перешлите сюда любое сообщение от нового пользователя: ");
-            break;
-        case FSM::ADMIN_RM_USER :
-            text.assign("Перешлите сюда любое сообщение от удаляемого пользователя: ");
-            break;
-        default : break;
-    }
-    return std::move(text);
-}
-
-Query_Args
-parseBioStr(std::string& str)
-{
-    auto firstname_index{str.find("Фамилия :")};
-    auto middlename_index{str.find("Имя :")};
-    auto lastname_index{str.find("Отчество :")};
-    auto car_model_index{str.find("Марка машины :")};
-    auto license_index{str.find("Номерной знак :")};
-
-    if(firstname_index != std::string::npos && middlename_index != std::string::npos
-       && lastname_index != std::string::npos && car_model_index != std::string::npos
-       && license_index != std::string::npos)
-    {
-        std::locale prev_locale{std::locale::global(std::locale("ru_RU.UTF-8"))};
-        std::smatch firstname_res{};
-        std::smatch middlename_res{};
-        std::smatch lastname_res{};
-        std::smatch car_model_res{};
-        std::smatch license_res{};
-
-        std::regex  name_regex{"[А-ЯЁа-яё]{1,30}"};
-        std::regex  car_model_regex{"[А-ЯЁа-яё0-9 ]{1,30}"};
-        std::regex license_regex{"([АВЕКМНОРСТУХавекмнорстух]{1}[0-9]{3}(?!000)["
-                                 "АВЕКМНОРСТУХавекмнорстух]{2}[0-9]{2,3})"};
-        //! dont use flags -- not working
-
-        std::regex_search({str.begin() + firstname_index + strlen("Фамилия :")},
-                          {str.begin() + middlename_index},
-                          firstname_res,
-                          name_regex);
-        std::regex_search({str.begin() + middlename_index + strlen("Имя :")},
-                          {str.begin() + lastname_index},
-                          middlename_res,
-                          name_regex);
-        std::regex_search({str.begin() + lastname_index + strlen("Отчество :")},
-                          {str.begin() + car_model_index},
-                          lastname_res,
-                          name_regex);
-        std::regex_search({str.begin() + car_model_index + strlen("Марка машины :")},
-                          {str.begin() + license_index},
-                          car_model_res,
-                          car_model_regex);
-        std::regex_search({str.begin() + license_index + strlen("Номерной знак :")},
-                          {str.end()},
-                          license_res,
-                          license_regex);
-        std::locale::global(std::locale(prev_locale));
-
-        return {{},
-                firstname_res.str(),
-                middlename_res.str(),
-                lastname_res.str(),
-                car_model_res.str(),
-                license_res.str()};
-    }
-    return {};
-}
-
-class States
-{
-private:
-    Data_Base&                                         _db;
-    std::unordered_map<decltype(TgBot::User::id), FSM> _states;
-    FSM                                                _dummy{FSM::USER_NOT_AUTORIZED};
-
-public:
-    States(Data_Base& db)
-        : _db{db}
-    {
-    }
-
-    FSM&
-    at(decltype(TgBot::User::id) id)
-    {
-        if(_db.employees().exists({.tg_id = std::to_string(id)}))
-        {
-            if(_states.contains(id))
-                return _states.at(id);
-            else
-            {
-                _states.insert({id, FSM::USER_AUTORIZED});
-                return _states.at(id);
-            }
-        }
-        else
-        {
-            if(_states.contains(id)) _states.erase(id);
-
-            _dummy = FSM::USER_NOT_AUTORIZED;
-            return _dummy;
-        }
-    }
-};
-
 int
 main(int argc, char** argv)
 {
-    Bot         bot{argv[1]};
-    std::string admin_id{argv[2]};
-    Data_Base   db{};
-    States      states{db};
+    TgBot::Bot                bot{argv[1]};
+    decltype(TgBot::User::id) admin_id{std::stoi(argv[2])};
+    std::string               mail_receiver{};
+    int                       places_num;
+    Data_Base                 db{};
 
+    auto                      parseBioStr{
+        [](std::string& str) -> Query_Args
+        {
+            auto firstname_index{str.find("➡️ Фамилия :")};
+            auto middlename_index{str.find("➡️ Имя :")};
+            auto lastname_index{str.find("➡️ Отчество :")};
+            auto car_model_index{str.find("➡️ Марка машины :")};
+            auto license_index{str.find("➡️ Номерной знак :")};
+
+            if(firstname_index != std::string::npos && middlename_index != std::string::npos
+               && lastname_index != std::string::npos && car_model_index != std::string::npos
+               && license_index != std::string::npos)
+            {
+                std::locale prev_locale{std::locale::global(std::locale("ru_RU.UTF-8"))};
+                std::smatch firstname_res{};
+                std::smatch middlename_res{};
+                std::smatch lastname_res{};
+                std::smatch car_model_res{};
+                std::smatch license_res{};
+
+                std::regex  name_regex{
+                    "[А-ЯЁа-яё]{1,30}",
+                };
+                std::regex car_model_regex{"[А-ЯЁа-яё0-9 ]{1,30}"};
+                std::regex license_regex{"([АВЕКМНОРСТУХавекмнорстух]{1}[0-9]{3}(?!000)["
+                                                              "АВЕКМНОРСТУХавекмнорстух]{2}[0-9]{2,3})"};
+                //! dont use flags -- not working
+
+                std::regex_search({str.begin() + firstname_index + strlen("➡️ Фамилия :")},
+                                                       {str.begin() + middlename_index},
+                                  firstname_res,
+                                  name_regex);
+                std::regex_search({str.begin() + middlename_index + strlen("➡️ Имя :")},
+                                                       {str.begin() + lastname_index},
+                                  middlename_res,
+                                  name_regex);
+                std::regex_search({str.begin() + lastname_index + strlen("➡️ Отчество :")},
+                                                       {str.begin() + car_model_index},
+                                  lastname_res,
+                                  name_regex);
+                std::regex_search({str.begin() + car_model_index + strlen("➡️ Марка машины :")},
+                                                       {str.begin() + license_index},
+                                  car_model_res,
+                                  car_model_regex);
+                std::regex_search({str.begin() + license_index + strlen("➡️ Номерной знак :")},
+                                                       {str.end()},
+                                  license_res,
+                                  license_regex);
+                std::locale::global(std::locale(prev_locale));
+
+                return {{},
+                        firstname_res.str(),
+                        middlename_res.str(),
+                        lastname_res.str(),
+                        car_model_res.str(),
+                        license_res.str()};
+            }
+            return {};
+        }};
+    auto text{
+        [&mail_receiver,
+         &places_num](FSM state                                   = FSM::USER_NOT_AUTHORIZED,
+                      std::optional<decltype(TgBot::User::id)> id = 0) -> std::string
+        {
+            std::string text;
+            switch(state)
+            {
+                case FSM::USER_NOT_AUTHORIZED :
+                    text.assign("🔴 Вас нет в базе данных, свяжитесь с администратором");
+                    break;
+                case FSM::USER_AUTHORIZED :
+                    text.assign("🟢 Авторизация прошла успешно");
+                    break;
+                case FSM::USER_INFO_HELP :
+                    text.assign("🅿️arker - бот-помощник для организации очередности парковки!");
+                    break;
+                case FSM::USER_CHNG_BIO :
+                    text.assign("Нажатием на поля ввода скопируйте текст сообщения, впишите "
+                                "новые данные и отправьте боту:\n\n"
+                                "❗ Используйте только кириллицу и цифры\n\n"
+                                "`➡️ Фамилия : Примеров\n"
+                                "➡️ Имя : Пример\n"
+                                "➡️ Отчество : Примерович\n"
+                                "➡️ Марка машины : Тойота Пример 200\n"
+                                "➡️ Номерной знак : а000аа000\n`");
+                    break;
+                case FSM::USER_RQST_PRKNG :
+                    text.assign("Выберите, что вы хотите сделать в данный момент:");
+                    break;
+                case FSM::USER_CNCL_RQST :
+                    text.assign("Ваше место Е3, время - с 14:30 до 16:00. Вы действительно "
+                                "хотите отменить бронь?");
+                    break;
+                case FSM::USER_SBMT_RQST :
+                    text.assign("На данный момент свободно 3 места, время - с 12:40 до "
+                                "16:35. Выберите время:");
+                    break;
+                case FSM::ADMIN : text.assign("Настройка бота: "); break;
+                case FSM::ADMIN_ADD_RM_USER :
+                    text.assign("Перешлите сюда любое сообщение пользователя: ");
+                    break;
+                case FSM::ADMIN_CHNG_MAIL :
+                    text.assign("Почтовый ящик получателя: " + mail_receiver);
+                    break;
+                case FSM::ADMIN_CHNG_NUM :
+                    text.assign("Колличество мест на парковке: " + std::to_string(places_num));
+                    break;
+                default : break;
+            }
+            return std::move(text);
+        }};
+    auto keyboard{
+        [](FSM state) -> TgBot::GenericReply::Ptr
+        {
+            TgBot::InlineKeyboardMarkup::Ptr keyboard(new TgBot::InlineKeyboardMarkup);
+            switch(state)
+            {
+                case FSM::USER_AUTHORIZED :
+                    {
+                        TgBot::InlineKeyboardButton::Ptr info_help(
+                            new TgBot::InlineKeyboardButton);
+                        info_help->text = "ℹ️ Информация и помощь";
+                        info_help->callbackData = "info_help";
+
+                        TgBot::InlineKeyboardButton::Ptr chng_bio(
+                            new TgBot::InlineKeyboardButton);
+                        chng_bio->text = "👤 Изменить данные пользователя";
+                        chng_bio->callbackData = "chng_bio";
+
+                        TgBot::InlineKeyboardButton::Ptr rqst_prkng(
+                            new TgBot::InlineKeyboardButton);
+                        rqst_prkng->text         = "🅿️ Парковка";
+                        rqst_prkng->callbackData = "rqst_prkng";
+
+                        keyboard->inlineKeyboard.push_back({info_help});
+                        keyboard->inlineKeyboard.push_back({chng_bio});
+                        keyboard->inlineKeyboard.push_back({rqst_prkng});
+                    }
+                    break;
+                case FSM::USER_RQST_PRKNG :
+                    {
+                        TgBot::InlineKeyboardButton::Ptr prkng_vldtn(
+                            new TgBot::InlineKeyboardButton);
+                        prkng_vldtn->text = "☑️ Валидировать парковку";
+                        prkng_vldtn->callbackData = "prkng_vldtn";
+
+                        TgBot::InlineKeyboardButton::Ptr cncl_rqst(
+                            new TgBot::InlineKeyboardButton);
+                        cncl_rqst->text         = "⬇️ Отменить заявку";
+                        cncl_rqst->callbackData = "cncl_rqst";
+
+                        TgBot::InlineKeyboardButton::Ptr submit_rqst(
+                            new TgBot::InlineKeyboardButton);
+                        submit_rqst->text         = "⬆️ Подать заявку";
+                        submit_rqst->callbackData = "submit_rqst";
+
+                        keyboard->inlineKeyboard.push_back({prkng_vldtn});
+                        keyboard->inlineKeyboard.push_back({cncl_rqst});
+                        keyboard->inlineKeyboard.push_back({submit_rqst});
+                    }
+                    break;
+                case FSM::USER_CNCL_RQST :
+                    {
+                        TgBot::InlineKeyboardButton::Ptr yes(new TgBot::InlineKeyboardButton);
+                        yes->text         = "Да";
+                        yes->callbackData = "cncl_rqst";
+
+                        TgBot::InlineKeyboardButton::Ptr no(new TgBot::InlineKeyboardButton);
+                        no->text         = "Нет";
+                        no->callbackData = "submit_rqst";
+
+                        keyboard->inlineKeyboard.push_back({yes});
+                        keyboard->inlineKeyboard.push_back({no});
+                    }
+                    break;
+                case FSM::ADMIN :
+                    {
+                        TgBot::InlineKeyboardButton::Ptr add_rm(
+                            new TgBot::InlineKeyboardButton);
+                        add_rm->text = "👤 Добавить/удалить пользователя";
+                        add_rm->callbackData = "add_rm_user";
+
+                        TgBot::InlineKeyboardButton::Ptr mailbox(
+                            new TgBot::InlineKeyboardButton);
+                        mailbox->text         = "📬 Добавить почту";
+                        mailbox->callbackData = "chng_mailbox";
+
+                        TgBot::InlineKeyboardButton::Ptr num(new TgBot::InlineKeyboardButton);
+                        num->text = "🔢 Изменить колличество мест";
+                        num->callbackData = "chng_num";
+
+                        keyboard->inlineKeyboard.push_back({add_rm});
+                        keyboard->inlineKeyboard.push_back({mailbox});
+                        keyboard->inlineKeyboard.push_back({num});
+                    }
+                    break;
+                default : break;
+            }
+            if(state != FSM::USER_AUTHORIZED)
+            {
+                TgBot::InlineKeyboardButton::Ptr rtn(new TgBot::InlineKeyboardButton);
+                rtn->text         = "↩️ Назад";
+                rtn->callbackData = "rtn";
+                keyboard->inlineKeyboard.push_back({rtn});
+            }
+            return keyboard;
+        }};
     // clean up ###########################################################################
     // ####################################################################################
-    bot.getApi().setChatMenuButton(0, MenuButton::Ptr{new MenuButtonCommands});
+    bot.getApi().setChatMenuButton(0, TgBot::MenuButton::Ptr{new TgBot::MenuButtonCommands});
     bot.getApi().deleteMyCommands();
 
     // set commands #######################################################################
     // ####################################################################################
-    BotCommand::Ptr start_command(new BotCommand{"start", "Start bot"});
-    BotCommand::Ptr return_command(new BotCommand{"return", "Return to previous step"});
-    BotCommand::Ptr admin_command(new BotCommand{"admin", "Only for admin"});
-    bot.getApi().setMyCommands({start_command, return_command, admin_command},
-                               BotCommandScope::Ptr{new BotCommandScopeDefault{}});
+    TgBot::BotCommand::Ptr start_command(new TgBot::BotCommand{"start", "Start bot"});
+    TgBot::BotCommand::Ptr admin_command(new TgBot::BotCommand{"admin", "Only for admin"});
+    bot.getApi().setMyCommands(
+        {start_command, admin_command},
+        TgBot::BotCommandScope::Ptr{new TgBot::BotCommandScopeDefault{}});
 
     // ####################################################################################
     // ####################################################################################
 
     bot.getEvents().onCommand(start_command->command,
-                              [&bot, &states](Message::Ptr message)
+                              [&bot, &db, &text, &keyboard](TgBot::Message::Ptr message)
                               {
-                                  states.at(message->from->id) = FSM::USER_AUTORIZED;
+                                  db.states().at(message->from->id) = FSM::USER_AUTHORIZED;
                                   bot.getApi().sendMessage(
                                       message->chat->id,
-                                      text(states.at(message->from->id)),
+                                      text(db.states().at(message->from->id)),
                                       false,
                                       0,
-                                      keyboard(states.at(message->from->id)));
-                              });
-    bot.getEvents().onCommand(return_command->command,
-                              [&bot, &states](Message::Ptr message)
-                              {
-                                  switch(states.at(message->from->id))
-                                  {
-                                      case FSM::USER_INFO_HELP :
-                                          states.at(message->from->id) = FSM::USER_AUTORIZED;
-                                          break;
-                                      case FSM::USER_RQST_PRKNG :
-                                          states.at(message->from->id) = FSM::USER_AUTORIZED;
-                                          break;
-                                      case FSM::USER_CNCL_RQST :
-                                          states.at(message->from->id) = FSM::USER_RQST_PRKNG;
-                                          break;
-                                      case FSM::USER_SBMT_RQST :
-                                          states.at(message->from->id) = FSM::USER_RQST_PRKNG;
-                                          break;
-                                      default : break;
-                                  }
-                                  bot.getApi().sendMessage(
-                                      message->chat->id,
-                                      text(states.at(message->from->id)),
-                                      false,
-                                      0,
-                                      keyboard(states.at(message->from->id)));
+                                      keyboard(db.states().at(message->from->id)));
                               });
     bot.getEvents().onCommand(
         admin_command->command,
-        [&bot, &states, &admin_id, &db](Message::Ptr message)
+        [&bot, &db, &admin_id, &text, &keyboard](TgBot::Message::Ptr message)
         {
-            if(std::to_string(message->from->id) == admin_id)
+            if(message->from->id == admin_id)
             {
                 db.employees().add({.tg_id = std::to_string(message->from->id)});
-                states.at(message->from->id) = FSM::ADMIN;
+                db.states().at(message->from->id) = FSM::ADMIN;
             }
             bot.getApi().sendMessage(message->chat->id,
-                                     text(states.at(message->from->id)),
+                                     text(db.states().at(message->from->id)),
                                      false,
                                      0,
-                                     keyboard(states.at(message->from->id)));
+                                     keyboard(db.states().at(message->from->id)));
         });
 
     // ####################################################################################
     // ####################################################################################
     bot.getEvents().onCallbackQuery(
-        [&bot, &states, &db](CallbackQuery::Ptr query)
+        [&bot, &db, &text, &keyboard](TgBot::CallbackQuery::Ptr query)
         {
-            switch(states.at(query->from->id))
+            try
             {
-                case FSM::USER_AUTORIZED :
+                if(StringTools::startsWith(query->data, "rtn"))
+                {
+                    switch(db.states().at(query->from->id))
                     {
-                        if(StringTools::startsWith(query->data, "info_help"))
-                        {
-                            states.at(query->from->id) = FSM::USER_INFO_HELP;
-                            bot.getApi().editMessageText(text(states.at(query->from->id)),
-                                                         query->message->chat->id,
-                                                         query->message->messageId,
-                                                         "",
-                                                         "",
-                                                         false,
-                                                         keyboard(states.at(query->from->id)));
-                        }
-                        if(StringTools::startsWith(query->data, "rqst_prkng"))
-                        {
-                            states.at(query->from->id) = FSM::USER_RQST_PRKNG;
-                            bot.getApi().editMessageText(text(states.at(query->from->id)),
-                                                         query->message->chat->id,
-                                                         query->message->messageId,
-                                                         "",
-                                                         "",
-                                                         false,
-                                                         keyboard(states.at(query->from->id)));
-                        }
-                        if(StringTools::startsWith(query->data, "chng_bio"))
-                        {
-                            states.at(query->from->id) = FSM::USER_CHNG_BIO;
-                            bot.getApi().editMessageText(text(states.at(query->from->id)),
-                                                         query->message->chat->id,
-                                                         query->message->messageId,
-                                                         "",
-                                                         "Markdown",
-                                                         false,
-                                                         keyboard(states.at(query->from->id)));
-                        }
+                        case FSM::USER_INFO_HELP :
+                            db.states().at(query->from->id) = FSM::USER_AUTHORIZED;
+                            break;
+                        case FSM::USER_CHNG_BIO :
+                            db.states().at(query->from->id) = FSM::USER_AUTHORIZED;
+                            break;
+                        case FSM::USER_RQST_PRKNG :
+                            db.states().at(query->from->id) = FSM::USER_AUTHORIZED;
+                            break;
+                        case FSM::USER_CNCL_RQST :
+                            db.states().at(query->from->id) = FSM::USER_RQST_PRKNG;
+                            break;
+                        case FSM::USER_SBMT_RQST :
+                            db.states().at(query->from->id) = FSM::USER_RQST_PRKNG;
+                            break;
+                        case FSM::ADMIN_CHNG_MAIL :
+                            db.states().at(query->from->id) = FSM::ADMIN;
+                            break;
+                        case FSM::ADMIN_ADD_RM_USER :
+                            db.states().at(query->from->id) = FSM::ADMIN;
+                            break;
+                        case FSM::ADMIN_CHNG_NUM :
+                            db.states().at(query->from->id) = FSM::ADMIN;
+                            break;
+                        default : break;
                     }
-                    break;
-                case FSM::USER_RQST_PRKNG :
+                    bot.getApi().editMessageText(text(db.states().at(query->from->id)),
+                                                 query->message->chat->id,
+                                                 query->message->messageId,
+                                                 "",
+                                                 "",
+                                                 false,
+                                                 keyboard(db.states().at(query->from->id)));
+                }
+                else
+                {
+                    switch(db.states().at(query->from->id))
                     {
-                        if(StringTools::startsWith(query->data, "cncl_rqst"))
-                        {
-                            states.at(query->from->id) = FSM::USER_CNCL_RQST;
-                            bot.getApi().editMessageText(text(states.at(query->from->id)),
-                                                         query->message->chat->id,
-                                                         query->message->messageId,
-                                                         "",
-                                                         "",
-                                                         false,
-                                                         keyboard(states.at(query->from->id)));
-                        }
-                        if(StringTools::startsWith(query->data, "submit_rqst"))
-                        {
-                            states.at(query->from->id) = FSM::USER_SBMT_RQST;
-                            bot.getApi().editMessageText(text(states.at(query->from->id)),
-                                                         query->message->chat->id,
-                                                         query->message->messageId,
-                                                         "",
-                                                         "",
-                                                         false,
-                                                         keyboard(states.at(query->from->id)));
-                        }
+                        case FSM::USER_AUTHORIZED :
+                            {
+                                if(StringTools::startsWith(query->data, "info_help"))
+                                {
+                                    db.states().at(query->from->id) = FSM::USER_INFO_HELP;
+                                    bot.getApi().editMessageText(
+                                        text(db.states().at(query->from->id)),
+                                        query->message->chat->id,
+                                        query->message->messageId,
+                                        "",
+                                        "",
+                                        false,
+                                        keyboard(db.states().at(query->from->id)));
+                                }
+                                if(StringTools::startsWith(query->data, "rqst_prkng"))
+                                {
+                                    db.states().at(query->from->id) = FSM::USER_RQST_PRKNG;
+                                    bot.getApi().editMessageText(
+                                        text(db.states().at(query->from->id)),
+                                        query->message->chat->id,
+                                        query->message->messageId,
+                                        "",
+                                        "",
+                                        false,
+                                        keyboard(db.states().at(query->from->id)));
+                                }
+                                if(StringTools::startsWith(query->data, "chng_bio"))
+                                {
+                                    db.states().at(query->from->id) = FSM::USER_CHNG_BIO;
+                                    bot.getApi().editMessageText(
+                                        text(db.states().at(query->from->id)),
+                                        query->message->chat->id,
+                                        query->message->messageId,
+                                        "",
+                                        "Markdown",
+                                        false,
+                                        keyboard(db.states().at(query->from->id)));
+                                }
+                            }
+                            break;
+                        case FSM::USER_RQST_PRKNG :
+                            {
+                                if(StringTools::startsWith(query->data, "cncl_rqst"))
+                                {
+                                    db.states().at(query->from->id) = FSM::USER_CNCL_RQST;
+                                    bot.getApi().editMessageText(
+                                        text(db.states().at(query->from->id)),
+                                        query->message->chat->id,
+                                        query->message->messageId,
+                                        "",
+                                        "",
+                                        false,
+                                        keyboard(db.states().at(query->from->id)));
+                                }
+                                if(StringTools::startsWith(query->data, "submit_rqst"))
+                                {
+                                    db.states().at(query->from->id) = FSM::USER_SBMT_RQST;
+                                    bot.getApi().editMessageText(
+                                        text(db.states().at(query->from->id)),
+                                        query->message->chat->id,
+                                        query->message->messageId,
+                                        "",
+                                        "",
+                                        false,
+                                        keyboard(db.states().at(query->from->id)));
+                                }
+                            }
+                            break;
+                        case FSM::ADMIN :
+                            {
+                                if(StringTools::startsWith(query->data, "add_rm_user"))
+                                {
+                                    db.states().at(query->from->id) = FSM::ADMIN_ADD_RM_USER;
+                                    bot.getApi().editMessageText(
+                                        text(db.states().at(query->from->id)),
+                                        query->message->chat->id,
+                                        query->message->messageId,
+                                        "",
+                                        "",
+                                        false,
+                                        keyboard(db.states().at(query->from->id)));
+                                }
+                                if(StringTools::startsWith(query->data, "chng_mailbox"))
+                                {
+                                    db.states().at(query->from->id) = FSM::ADMIN_CHNG_MAIL;
+                                    bot.getApi().editMessageText(
+                                        text(db.states().at(query->from->id)),
+                                        query->message->chat->id,
+                                        query->message->messageId,
+                                        "",
+                                        "",
+                                        false,
+                                        keyboard(db.states().at(query->from->id)));
+                                }
+                                if(StringTools::startsWith(query->data, "chng_num"))
+                                {
+                                    db.states().at(query->from->id) = FSM::ADMIN_CHNG_NUM;
+                                    bot.getApi().editMessageText(
+                                        text(db.states().at(query->from->id)),
+                                        query->message->chat->id,
+                                        query->message->messageId,
+                                        "",
+                                        "",
+                                        false,
+                                        keyboard(db.states().at(query->from->id)));
+                                }
+                            }
+                            break;
+                        default : break;
                     }
-                    break;
-                case FSM::ADMIN :
-                    {
-                        if(StringTools::startsWith(query->data, "add_user"))
-                        {
-                            states.at(query->from->id) = FSM::ADMIN_ADD_USER;
-                            bot.getApi().editMessageText(text(states.at(query->from->id)),
-                                                         query->message->chat->id,
-                                                         query->message->messageId,
-                                                         "",
-                                                         "",
-                                                         false,
-                                                         keyboard(states.at(query->from->id)));
-                        }
-                        if(StringTools::startsWith(query->data, "rm_user"))
-                        {
-                            states.at(query->from->id) = FSM::ADMIN_RM_USER;
-                            bot.getApi().editMessageText(text(states.at(query->from->id)),
-                                                         query->message->chat->id,
-                                                         query->message->messageId,
-                                                         "",
-                                                         "",
-                                                         false,
-                                                         keyboard(states.at(query->from->id)));
-                        }
-                    }
-                    break;
-                default : break;
+                }
             }
+            catch(...)
+            {
+                std::cerr << "catched";
+        }
         });
 
     // ####################################################################################
     // ####################################################################################
     bot.getEvents().onAnyMessage(
-        [&bot, &states, &db](Message::Ptr message)
+        [&bot, &db, &parseBioStr, &keyboard, &mail_receiver, &places_num](
+            TgBot::Message::Ptr message)
         {
-            switch(states.at(message->from->id))
+            switch(db.states().at(message->from->id))
             {
-                case FSM::ADMIN_ADD_USER :
-                    {
-                        if(message->forwardFrom
-                           && db.employees().add(
-                               {.tg_id = std::to_string(message->forwardFrom->id)}))
-                            bot.getApi().sendMessage(message->chat->id,
-                                                     "🟢 Пользователь добавлен",
-                                                     false,
-                                                     0,
-                                                     keyboard(states.at(message->from->id)));
-
-                        else
-                        {
-                            bot.getApi().sendMessage(message->chat->id,
-                                                     "🔴 Пользователь не добавлен",
-                                                     false,
-                                                     0,
-                                                     keyboard(states.at(message->from->id)));
-                        }
-                    }
-                    break;
-                case FSM::ADMIN_RM_USER :
-                    {
-                        if(message->forwardFrom
-                           && db.employees().remove(
-                               {.tg_id = std::to_string(message->forwardFrom->id)}))
-                        {
-                            bot.getApi().sendMessage(message->chat->id,
-                                                     "🟢 Пользователь удален",
-                                                     false,
-                                                     0,
-                                                     keyboard(states.at(message->from->id)));
-                        }
-                        else
-                        {
-                            bot.getApi().sendMessage(message->chat->id,
-                                                     "🔴 Пользователь не удален",
-                                                     false,
-                                                     0,
-                                                     keyboard(states.at(message->from->id)));
-                        }
-                    }
-                    break;
                 case FSM::USER_CHNG_BIO :
                     {
                         auto        new_bio{parseBioStr(message->text)};
@@ -495,7 +471,7 @@ main(int argc, char** argv)
                                     "🟢 Данные о пользователе обновлены",
                                     false,
                                     0,
-                                    keyboard(states.at(message->from->id)));
+                                    keyboard(db.states().at(message->from->id)));
                         }
                         else
                         {
@@ -504,10 +480,50 @@ main(int argc, char** argv)
                                 fail_message + "🔴 Данные о пользователе не обновлены",
                                 false,
                                 0,
-                                keyboard(states.at(message->from->id)));
+                                keyboard(db.states().at(message->from->id)));
                         }
                     }
                     break;
+                case FSM::ADMIN_ADD_RM_USER :
+                    {
+                        if(message->forwardFrom)
+                        {
+                            if(db.employees().exists(
+                                   {.tg_id = std::to_string(message->forwardFrom->id)}))
+                            {
+                                bot.getApi().sendMessage(
+                                    message->chat->id,
+                                    ((db.employees().remove(
+                                        {.tg_id = std::to_string(message->forwardFrom->id)})))
+                                        ? "🟢 Пользователь удален"
+                                        : "🔴 Пользователь не удален",
+                                    false,
+                                    0,
+                                    keyboard(db.states().at(message->from->id)));
+                            }
+                            else
+                            {
+                                bot.getApi().sendMessage(
+                                    message->chat->id,
+                                    ((db.employees().add(
+                                        {.tg_id = std::to_string(message->forwardFrom->id)})))
+                                        ? "🟢 Пользователь добавлен"
+                                        : "🔴 Пользователь не добавлен",
+                                    false,
+                                    0,
+                                    keyboard(db.states().at(message->from->id)));
+                            }
+                        }
+                    }
+                    break;
+                case FSM::ADMIN_CHNG_MAIL :
+                    if(message->text.find('@') != std::string::npos)
+                        mail_receiver = message->text;
+                    break;
+                case FSM::ADMIN_CHNG_NUM :
+                    places_num = std::stoi(message->text.c_str());
+                    break;
+
                 default : break;
             }
         });
@@ -525,7 +541,7 @@ main(int argc, char** argv)
         printf("Bot username: %s\n", bot.getApi().getMe()->username.c_str());
         bot.getApi().deleteWebhook();
 
-        TgLongPoll longPoll(bot);
+        TgBot::TgLongPoll longPoll(bot);
         while(true)
         {
             printf("Long poll started\n");
