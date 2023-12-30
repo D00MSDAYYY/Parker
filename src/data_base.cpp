@@ -1,4 +1,4 @@
-﻿#include "db_interactions.hpp"
+﻿#include "data_base.hpp"
 
 #include <algorithm>
 #include <cstdlib>
@@ -54,7 +54,7 @@ Employees_Table::add(Query_Args args) const
         query += (args.license.empty()) ? ", NULL " : ", '" + args.license + "' ";
         query  = "INSERT INTO employees VALUES ( " + query + " ) RETURNING tg_id; ";
 
-        std::cerr << query << std::endl;
+        // std::cerr << query << std::endl;
 
         auto res{PQexec(_connection, query.c_str())};
 
@@ -112,7 +112,7 @@ Employees_Table::remove(Query_Args args) const
         }
         query = "DELETE FROM employees WHERE " + query + " RETURNING tg_id;";
 
-        std::cerr << query << std::endl;
+        // std::cerr << query << std::endl;
 
         auto res{PQexec(_connection, query.c_str())};
 
@@ -169,7 +169,7 @@ Employees_Table::update(Query_Args args) const
         }
         query = "UPDATE employees SET " + query + " WHERE tg_id = " + args.tg_id + "; ";
 
-        std::cerr << query << std::endl;
+        // std::cerr << query << std::endl;
 
         auto res{PQexec(_connection, query.c_str())};
 
@@ -219,7 +219,9 @@ Employees_Table::exists(Query_Args args) const
         query += "license = '" + args.license + "'";
     }
     query = "SELECT EXISTS(SELECT 1 FROM employees WHERE " + query + " ) AS exists ; ";
-    std::cerr << query;
+
+    // std::cerr << query;
+
     auto res{PQexec(_connection, query.c_str())};
 
     if(PQresultStatus(res) != PGRES_TUPLES_OK)
@@ -269,7 +271,7 @@ Employees_Table::count(Query_Args args) const
 
     query = "SELECT COUNT(*) FROM employees WHERE " + query + " ); ";
 
-    std::cerr << query << std::endl;
+    // std::cerr << query << std::endl;
 
     auto res{PQexec(_connection, query.c_str())};
 
@@ -286,12 +288,65 @@ Employees_Table::count(Query_Args args) const
     return std::stoi(count_str);
 }
 
-// std::optional<std::vector<Query_Args>>
-// Employees_Table::select_where(Query_Args args) const
-// {
-//     if(exists(args))
-//     return std::optional<std::vector<Query_Args>>();
-// }
+std::optional<std::vector<Query_Args>>
+Employees_Table::select_where(Query_Args args) const
+{
+    std::string query{};
+
+    if(!args.tg_id.empty()) query += "tg_id = '" + args.tg_id + "'";
+
+    if(!args.firstname.empty())
+    {
+        if(!query.empty()) query += " , ";
+        query += "firstname = '" + args.firstname + "'";
+    }
+
+    if(!args.middlename.empty())
+    {
+        if(!query.empty()) query += " , ";
+        query += "middlename = '" + args.middlename + "'";
+    }
+    if(!args.lastname.empty())
+    {
+        if(!query.empty()) query += " , ";
+        query += "lastname = '" + args.lastname + "'";
+    }
+    if(!args.car_model.empty())
+    {
+        if(!query.empty()) query += " , ";
+        query += "car_model = '" + args.car_model + "'";
+    }
+    if(!args.license.empty())
+    {
+        if(!query.empty()) query += " , ";
+        query += "license = '" + args.license + "'";
+    }
+    query = "SELECT * FROM employees WHERE " + query + "; ";
+
+    std::cerr << query << std::endl;
+
+    auto res{PQexec(_connection, query.c_str())};
+
+    if(PQresultStatus(res) != PGRES_TUPLES_OK)
+    {
+        fprintf(stderr, "SELECT WHERE in employees failed: %s", PQerrorMessage(_connection));
+        PQclear(res);
+        return {};
+    }
+    std::vector<Query_Args> users;
+    for(int i{0}; i < PQntuples(res); ++i)
+    {
+        users.push_back({PQgetvalue(res, i, PQfnumber(res, "tg_id")),
+                        PQgetvalue(res, i, PQfnumber(res, "firstname")),
+                        PQgetvalue(res, i, PQfnumber(res, "middlename")),
+                        PQgetvalue(res, i, PQfnumber(res, "lastname")),
+                        PQgetvalue(res, i, PQfnumber(res, "car_model")),
+                        PQgetvalue(res, i, PQfnumber(res, "license"))});
+    }
+    PQclear(res);
+
+    return users;
+}
 
 FSM&
 States::at(decltype(TgBot::User::id) id)

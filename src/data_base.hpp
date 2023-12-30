@@ -42,8 +42,32 @@ public:
     exists(Query_Args args) const = 0;
     virtual int
     count(Query_Args args) const = 0;
-    // virtual std::optional<std::vector<Query_Args>>
-    // select_where(Query_Args args) const = 0
+    virtual std::optional<std::vector<Query_Args>>
+    select_where(Query_Args args) const = 0;
+};
+
+class States;
+
+class Employees_Table : public Table
+{
+private:
+    States* _states{nullptr};
+
+public:
+    Employees_Table(PGconn* connection, States* states);
+
+    bool
+    add(Query_Args args) const override;
+    bool
+    remove(Query_Args args) const override;
+    virtual bool
+    update(Query_Args args) const override;
+    bool
+    exists(Query_Args args) const override;
+    int
+    count(Query_Args args) const override;
+    std::optional<std::vector<Query_Args>>
+    select_where(Query_Args args) const override;
 };
 
 class Data_Base;
@@ -67,28 +91,6 @@ public:
     remove(decltype(TgBot::User::id) id);
     void
     add(decltype(TgBot::User::id) id);
-};
-
-class Employees_Table : public Table
-{
-private:
-    States* _states{nullptr};
-
-public:
-    Employees_Table(PGconn* connection, States* states);
-
-    bool
-    add(Query_Args args) const override;
-    bool
-    remove(Query_Args args) const override;
-    virtual bool
-    update(Query_Args args) const override;
-    bool
-    exists(Query_Args args) const override;
-    int
-    count(Query_Args args) const override;
-    // std::optional<std::vector<Query_Args>>
-    // select_where(Query_Args args) const override;
 };
 
 class Data_Base
