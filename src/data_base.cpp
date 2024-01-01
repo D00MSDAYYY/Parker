@@ -321,7 +321,7 @@ Employees_Table::select_where(Query_Args args) const
         if(!query.empty()) query += " , ";
         query += "license = '" + args.license + "'";
     }
-    query = "SELECT * FROM employees WHERE " + query + "; ";
+    query = "SELECT * FROM employees WHERE " + query + " LIMIT 20; ";
 
     std::cerr << query << std::endl;
 

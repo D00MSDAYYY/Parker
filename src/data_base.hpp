@@ -1,4 +1,5 @@
-﻿#include "FSM_states.hpp"
+﻿#pragma once
+#include "FSM_states.hpp"
 #include "libpq-fe.h"
 
 #include <iostream>
