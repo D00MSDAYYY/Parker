@@ -2,87 +2,28 @@
 #include "data_base.hpp"
 #include "email.hpp"
 
+#include <atomic>
 #include <csignal>
 #include <cstdio>
 #include <cstdlib>
 #include <exception>
 #include <locale>
 #include <optional>
-#include <regex>
 #include <string>
 #include <tgbot/tgbot.h>
+#include <utility>
 
 int
 main(int argc, char** argv)
 {
     TgBot::Bot                bot{argv[1]};
-    decltype(TgBot::User::id) admin_id{std::stoi(argv[2])};
-    Mail                      mail{};
-    int                       places_num;
+    decltype(TgBot::User::id) admin_id{std::stoll(argv[2])};
+    Mail_Args                 mail{};
     Data_Base                 db{};
 
-    auto                      parseBioStr{
-        [](std::string& str) -> Query_Args
-        {
-            auto firstname_index{str.find("➡️ Фамилия :")};
-            auto middlename_index{str.find("➡️ Имя :")};
-            auto lastname_index{str.find("➡️ Отчество :")};
-            auto car_model_index{str.find("➡️ Марка машины :")};
-            auto license_index{str.find("➡️ Номерной знак :")};
-
-            if(firstname_index != std::string::npos && middlename_index != std::string::npos
-               && lastname_index != std::string::npos && car_model_index != std::string::npos
-               && license_index != std::string::npos)
-            {
-                std::locale prev_locale{std::locale::global(std::locale("ru_RU.UTF-8"))};
-                std::smatch firstname_res{};
-                std::smatch middlename_res{};
-                std::smatch lastname_res{};
-                std::smatch car_model_res{};
-                std::smatch license_res{};
-
-                std::regex  name_regex{"([А-ЯЁа-яё]{1,30})"};
-                std::regex  car_model_regex{"([А-ЯЁа-яё0-9 ]{1,30})"};
-                std::regex license_regex{"([АВЕКМНОРСТУХавекмнорстух]{1}[0-9]{3}(?!000)["
-                                                              "АВЕКМНОРСТУХавекмнорстух]{2}[0-9]{2,3})"};
-                //! dont use flags -- not working
-
-                std::regex_search({str.begin() + firstname_index + strlen("➡️ Фамилия :")},
-                                                       {str.begin() + middlename_index},
-                                  firstname_res,
-                                  name_regex);
-                std::regex_search({str.begin() + middlename_index + strlen("➡️ Имя :")},
-                                                       {str.begin() + lastname_index},
-                                  middlename_res,
-                                  name_regex);
-                std::regex_search({str.begin() + lastname_index + strlen("➡️ Отчество :")},
-                                                       {str.begin() + car_model_index},
-                                  lastname_res,
-                                  name_regex);
-                std::regex_search({str.begin() + car_model_index + strlen("➡️ Марка машины :")},
-                                                       {str.begin() + license_index},
-                                  car_model_res,
-                                  car_model_regex);
-                std::regex_search({str.begin() + license_index + strlen("➡️ Номерной знак :")},
-                                                       {str.end()},
-                                  license_res,
-                                  license_regex);
-                std::locale::global(std::locale(prev_locale));
-
-                return {{},
-                        firstname_res.str(),
-                        middlename_res.str(),
-                        lastname_res.str(),
-                        car_model_res.str(),
-                        license_res.str()};
-            }
-            else
-                return {};
-        }};
-    auto text{
-        [&mail, &places_num, &db](FSM state = FSM::USER_NOT_AUTHORIZED,
-                                  std::optional<decltype(TgBot::User::id)> id =
-                                      0) -> std::string
+    auto                      text{
+        [&mail, &db](FSM                                      state = FSM::USER_NOT_AUTHORIZED,
+                     std::optional<decltype(TgBot::User::id)> id = 0) -> std::string
         {
             std::string text;
             switch(state)
@@ -94,43 +35,44 @@ main(int argc, char** argv)
                     text.assign("🟢 Авторизация прошла успешно");
                     break;
                 case FSM::USER_INFO_HELP :
-                    text.assign("🅿️arker - бот-помощник для организации очередности парковки!");
+                    text.assign("🅿️arker - телеграм-бот-помощник для организации очередности "
+                                                     "парковки!");
                     break;
                 case FSM::USER_CHNG_BIO :
                     {
                         // TODO! use assert(id != nullopt)
                         auto qargs{
                             db.employees().select_where({.tg_id = std::to_string(*id)})};
-                        auto par = (qargs ? (*qargs)[0] : Query_Args{});
+                        auto params = (qargs ? (*qargs)[0] : Query_Args{});
                         text.assign("Нажатием на поля ввода скопируйте текст сообщения, "
-                                    "впишите новые данные и отправьте боту:\n\n"
-                                    "❗ Используйте только кириллицу и цифры\n\n"
-                                    "`➡️ Фамилия : "
-                                    + par.firstname
+                                                         "впишите новые данные и отправьте боту:\n\n"
+                                                         "❗ Используйте только кириллицу и цифры\n\n"
+                                                         "`➡️ Фамилия : "
+                                    + params.firstname
                                     + "\n"
-                                      "➡️ Имя : "
-                                    + par.middlename
+                                                           "➡️ Имя : "
+                                    + params.middlename
                                     + "\n"
-                                      "➡️ Отчество : "
-                                    + par.lastname
+                                                           "➡️ Отчество : "
+                                    + params.lastname
                                     + "\n"
-                                      "➡️ Марка машины : "
-                                    + par.car_model
+                                                           "➡️ Марка машины : "
+                                    + params.car_model
                                     + "\n"
-                                      "➡️ Номерной знак : "
-                                    + par.license + "\n`");
+                                                           "➡️ Номерной знак : "
+                                    + params.license + "\n`");
                     }
                     break;
                 case FSM::USER_RQST_PRKNG :
                     text.assign("Выберите, что вы хотите сделать в данный момент:");
                     break;
                 case FSM::USER_CNCL_RQST :
-                    text.assign("Ваше место Е3, время - с 14:30 до 16:00. Вы действительно "
-                                "хотите отменить бронь?");
+                    text.assign("Вы действительно хотите отменить бронь?");
                     break;
                 case FSM::USER_SBMT_RQST :
-                    text.assign("На данный момент свободно 3 места, время - с 12:40 до "
-                                "16:35. Выберите время:");
+                    text.assign("На данный момент свободно "
+                                + std::to_string(db.datetime().curPlaces()) + " места из "
+                                + std::to_string(*(db.datetime().maxPlaces())));
                     break;
                 case FSM::ADMIN : text.assign("Настройка бота: "); break;
                 case FSM::ADMIN_ADD_RM_USER :
@@ -139,14 +81,17 @@ main(int argc, char** argv)
                 case FSM::ADMIN_CHNG_MAIL :
                     text.assign("`📥 Получатель : " + mail._receiver_addr
                                 + "\n"
-                                  "📤 Отправитель : "
+                                                       "📤 Отправитель : "
                                 + mail._sender_addr
                                 + "\n"
-                                  "📤🔐 Пароль : "
+                                                       "📤🔐 Пароль : "
                                 + mail._sender_pass + "\n`");
                     break;
                 case FSM::ADMIN_CHNG_NUM :
-                    text.assign("Колличество мест на парковке: " + std::to_string(places_num));
+                    text.assign("Максимальное колличество мест на парковке: "
+                                + std::to_string(*(db.datetime().maxPlaces())));
+                case FSM::ADMIN_CHNG_WKDY :
+                    text.assign("Выберите дни, в которые бот будет организовывать парковку: ");
                     break;
                 default : break;
             }
@@ -227,14 +172,57 @@ main(int argc, char** argv)
                         num->text = "🔢 Изменить колличество мест";
                         num->callbackData = "chng_num";
 
+                        TgBot::InlineKeyboardButton::Ptr wdy(new TgBot::InlineKeyboardButton);
+                        wdy->text         = "📅 Изменить дни недели";
+                        wdy->callbackData = "chng_wkdy";
+
                         TgBot::InlineKeyboardButton::Ptr mailbox(
                             new TgBot::InlineKeyboardButton);
-                        mailbox->text         = "📬 Добавить почту";
+                        mailbox->text         = "📬 Изменить почту";
                         mailbox->callbackData = "chng_mailbox";
+
+                        TgBot::InlineKeyboardButton::Ptr snd_rprt(
+                            new TgBot::InlineKeyboardButton);
+                        snd_rprt->text         = "📈 Отправить доклад";
+                        snd_rprt->callbackData = "snd_rprt";
 
                         keyboard->inlineKeyboard.push_back({add_rm});
                         keyboard->inlineKeyboard.push_back({num});
+                        keyboard->inlineKeyboard.push_back({wdy});
                         keyboard->inlineKeyboard.push_back({mailbox});
+                        keyboard->inlineKeyboard.push_back({snd_rprt});
+                    }
+                    break;
+                case FSM::ADMIN_CHNG_WKDY :
+                    {
+                        TgBot::InlineKeyboardButton::Ptr mon(new TgBot::InlineKeyboardButton);
+                        mon->text         = "Понедельник";
+                        mon->callbackData = "monday";
+                        TgBot::InlineKeyboardButton::Ptr tue(new TgBot::InlineKeyboardButton);
+                        tue->text         = "Вторник";
+                        tue->callbackData = "tuesday";
+                        TgBot::InlineKeyboardButton::Ptr wed(new TgBot::InlineKeyboardButton);
+                        wed->text         = "Среда";
+                        wed->callbackData = "wednesday";
+                        TgBot::InlineKeyboardButton::Ptr thu(new TgBot::InlineKeyboardButton);
+                        thu->text         = "Четверг";
+                        thu->callbackData = "thursday";
+                        TgBot::InlineKeyboardButton::Ptr fri(new TgBot::InlineKeyboardButton);
+                        fri->text         = "Пятница";
+                        fri->callbackData = "friday";
+                        TgBot::InlineKeyboardButton::Ptr sat(new TgBot::InlineKeyboardButton);
+                        sat->text         = "Суббота";
+                        sat->callbackData = "saturday";
+                        TgBot::InlineKeyboardButton::Ptr sun(new TgBot::InlineKeyboardButton);
+                        sun->text         = "Воскресенье";
+                        sun->callbackData = "sunday";
+                        keyboard->inlineKeyboard.push_back({mon});
+                        keyboard->inlineKeyboard.push_back({tue});
+                        keyboard->inlineKeyboard.push_back({wed});
+                        keyboard->inlineKeyboard.push_back({thu});
+                        keyboard->inlineKeyboard.push_back({fri});
+                        keyboard->inlineKeyboard.push_back({sat});
+                        keyboard->inlineKeyboard.push_back({sun});
                     }
                     break;
                 default : break;
@@ -294,7 +282,7 @@ main(int argc, char** argv)
     // ####################################################################################
     // ####################################################################################
     bot.getEvents().onCallbackQuery(
-        [&bot, &db, &text, &keyboard](TgBot::CallbackQuery::Ptr query)
+        [&bot, &db, &text, &keyboard, &mail](TgBot::CallbackQuery::Ptr query)
         {
             try
             {
@@ -326,7 +314,9 @@ main(int argc, char** argv)
                         case FSM::ADMIN_CHNG_NUM :
                             db.states().at(query->from->id) = FSM::ADMIN;
                             break;
-                        default : break;
+                        default :
+                            db.states().at(query->from->id) = FSM::USER_AUTHORIZED;
+                            break;
                     }
                     bot.getApi().editMessageText(text(db.states().at(query->from->id)),
                                                  query->message->chat->id,
@@ -446,6 +436,58 @@ main(int argc, char** argv)
                                         false,
                                         keyboard(db.states().at(query->from->id)));
                                 }
+                                if(StringTools::startsWith(query->data, "snd_rprt"))
+                                {
+                                    if(sendReport(mail))
+                                        bot.getApi().sendMessage(
+                                            query->message->chat->id,
+                                            "🟢 Отчет отправлен",
+                                            false,
+                                            0,
+                                            keyboard(
+                                                db.states().at(query->message->from->id)));
+                                    else
+                                        bot.getApi().sendMessage(
+                                            query->message->chat->id,
+                                            "🔴 Отчет не отправлен",
+                                            false,
+                                            0,
+                                            keyboard(
+                                                db.states().at(query->message->from->id)));
+                                }
+                                if(StringTools::startsWith(query->data, "chng_wkdy"))
+                                {
+                                    db.states().at(query->from->id) = FSM::ADMIN_CHNG_WKDY;
+                                    bot.getApi().editMessageText(
+                                        text(db.states().at(query->from->id)),
+                                        query->message->chat->id,
+                                        query->message->messageId,
+                                        "",
+                                        "",
+                                        false,
+                                        keyboard(db.states().at(query->from->id)));
+                                }
+                            }
+                            break;
+                        case FSM::ADMIN_CHNG_WKDY :
+                            {
+                                (StringTools::startsWith(query->data, "cncl_rqst")) ? ;
+
+
+
+
+
+                                db.states().at(query->from->id) = FSM::USER_CNCL_RQST;
+                                bot.getApi().editMessageText(
+                                    text(db.states().at(query->from->id)),
+                                    query->message->chat->id,
+                                    query->message->messageId,
+                                    "",
+                                    "",
+                                    false,
+                                    keyboard(db.states().at(query->from->id)));
+                               
+                                
                             }
                             break;
                         default : break;
@@ -460,7 +502,7 @@ main(int argc, char** argv)
     // ####################################################################################
     // ####################################################################################
     bot.getEvents().onAnyMessage(
-        [&bot, &db, &parseBioStr, &keyboard, &mail, &places_num](TgBot::Message::Ptr message)
+        [&bot, &db, &keyboard, &mail](TgBot::Message::Ptr message)
         {
             switch(db.states().at(message->from->id))
             {
@@ -482,15 +524,15 @@ main(int argc, char** argv)
 
                         new_bio.tg_id = std::to_string(message->from->id);
                         db.employees().update(new_bio);
-                        
+
                         if(fail_message.empty())
                         {
-                                bot.getApi().sendMessage(
-                                    message->chat->id,
-                                    "🟢 Данные о пользователе обновлены",
-                                    false,
-                                    0,
-                                    keyboard(db.states().at(message->from->id)));
+                            bot.getApi().sendMessage(
+                                message->chat->id,
+                                "🟢 Данные о пользователе обновлены",
+                                false,
+                                0,
+                                keyboard(db.states().at(message->from->id)));
                         }
                         else
                         {
@@ -571,7 +613,37 @@ main(int argc, char** argv)
                     }
                     break;
                 case FSM::ADMIN_CHNG_NUM :
-                    places_num = std::stoi(message->text.c_str());
+                    {
+                        int input{0};
+                        try
+                        {
+                            input = std::stoi(message->text.c_str());
+                        }
+                        catch(...)
+                        {
+                            break;
+                        }
+                        if(db.datetime().maxPlaces(input))
+                        {
+                            bot.getApi().sendMessage(
+                                message->chat->id,
+                                "🟢 Колличество мест изменено на " + std::to_string(input),
+                                false,
+                                0,
+                                keyboard(db.states().at(message->from->id)));
+                        }
+                        else
+                            bot.getApi().sendMessage(
+                                message->chat->id,
+                                "🔴 Колличество мест, уже забронированных на "
+                                "следующий день превышает "
+                                "новое максимальное число мест. Не удалось изменить "
+                                "колличество мест на "
+                                    + std::to_string(input),
+                                false,
+                                0,
+                                keyboard(db.states().at(message->from->id)));
+                    }
                     break;
 
                 default : break;
