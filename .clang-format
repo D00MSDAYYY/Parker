@@ -226,3 +226,4 @@ QualifierOrder:
   - static
   - const
   - type
+// clang-format off

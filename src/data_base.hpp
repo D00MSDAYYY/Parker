@@ -1,9 +1,12 @@
-﻿#include "FSM_states.hpp"
-#include "libpq-fe.h"
+﻿#pragma once
+#include "FSM_states.hpp"
 
+#include <atomic>
+#include <chrono>
 #include <iostream>
-#include <memory>
+#include <libpq-fe.h>
 #include <optional>
+#include <regex>
 #include <string>
 #include <tgbot/tgbot.h>
 #include <unordered_map>
@@ -17,7 +20,12 @@ struct Query_Args
     std::string lastname{};
     std::string car_model{};
     std::string license{};
+
+    std::string datetime{};
 };
+
+Query_Args
+parseBioStr(std::string& str);
 
 class Table  // interface
 {
@@ -26,9 +34,7 @@ protected:
 
 public:
     Table(PGconn* connection)
-        : _connection{connection}
-    {
-    }
+        : _connection{connection} {};
 
     virtual ~Table() {}
 
@@ -70,6 +76,39 @@ public:
     select_where(Query_Args args) const override;
 };
 
+std::string
+toDatetimeStr(std::chrono::time_point<std::chrono::system_clock> time_p);
+
+class Datetime_Table : public Table
+{
+private:
+    std::atomic<int>         max_places{0};
+    mutable std::atomic<int> occup_places{0};
+
+public:
+    Datetime_Table(PGconn* connection);
+
+    void
+    operator=(const Datetime_Table& other);
+    bool
+    add(Query_Args args) const override;
+    bool
+    remove(Query_Args args) const override;
+    virtual bool
+    update(Query_Args args) const override;
+    bool
+    exists(Query_Args args) const override;
+    int
+    count(Query_Args args) const override;
+    std::optional<std::vector<Query_Args>>
+    select_where(Query_Args args) const override;
+
+    std::optional<int>
+    maxPlaces(std::optional<int> num = std::nullopt);
+    int
+    curPlaces();
+};
+
 class Data_Base;
 
 class States
@@ -81,9 +120,7 @@ private:
 
 public:
     States(Data_Base* db)
-        : _db{db}
-    {
-    }
+        : _db{db} {};
 
     FSM&
     at(decltype(TgBot::User::id) id);
@@ -100,19 +137,20 @@ private:
 
     States          _states{nullptr};
     Employees_Table _employees{nullptr, nullptr};
+    Datetime_Table  _datetime{nullptr};
 
 public:
     Data_Base(std::string name = "");
 
-    Table&
-    employees()
-    {
-        return _employees;
-    };
+    // clang-format off
+    ~Data_Base() {PQfinish(_connection);}
 
+    Employees_Table&
+    employees(){ return _employees; }
+    Datetime_Table&
+    datetime(){ return _datetime; }
     States&
-    states()
-    {
-        return _states;
-    };
+    states(){ return _states; }
+
+    // clang-format on
 };

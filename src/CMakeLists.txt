@@ -16,11 +16,13 @@ PUBLIC
 	FSM_states.hpp
 	email.hpp
 	data_base.hpp
+	excel.hpp
 
 PRIVATE
 	main.cpp
 	email.cpp
 	data_base.cpp
+	excel.cpp
 )
 
 target_include_directories(${PROJECT_NAME}
@@ -31,5 +33,7 @@ PUBLIC
 target_link_libraries(${PROJECT_NAME}
 PUBLIC
 	TgBot
+	mailio
+	OpenXLSX::OpenXLSX
 	PostgreSQL::PostgreSQL
 )
