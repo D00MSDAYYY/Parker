@@ -22,7 +22,18 @@ To build bot you will need to download/install :
 - [ **tgbot-cpp** ](https://github.com/reo7sp/tgbot-cpp.git) lib (same)
 
 ## Launch : 
-Launch command: 
+After you installed and initted PostgreSQL, use this command to create database: 
 ```
-Paker YOUR_TG_BOT_TOKEN ADMIN_TG_ID
+CREATE DATABASE Parker;
+```
+
+\+ If you are not in English-speaking country you probably will need to use +- this command to create database (change 'ru_RU' to your locale): 
+
+```
+CREATE DATABASE Parker WITH ENCODING 'UTF8' LC_COLLATE='ru_RU.UTF-8' LC_CTYPE='ru_RU.UTF-8' TEMPLATE=template0;
+```
+
+Bot launch command: 
+```
+Parker YOUR_TG_BOT_TOKEN ADMIN_TG_ID
 ```
